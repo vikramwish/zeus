@@ -121,8 +121,10 @@ cargo run -- run examples/reconstruction/job.acceptance.local.json \
   --allow-network --allow-exec
 ```
 
-Local inference may take several minutes. The transport has a bounded 180-second
-whole-response deadline per request; allow a longer overall CLI execution window.
+Local inference may take several minutes. The transport defaults to a 180-second
+whole-response deadline per request. A job may set `model_timeout` to 1–900 seconds;
+600 seconds can accommodate slower concurrent local inference without removing
+the deadline or automatically retrying requests. Allow a longer overall CLI execution window.
 Retain ignored run directories, events, reports, and policy evidence. A verifier
 pass establishes only these finite public checks, not general model quality,
 security containment, hidden-benchmark performance, or REA/MCP integration.

@@ -327,7 +327,7 @@ fn prepare_state(job: &Job) -> Result<PathBuf, String> {
 
 pub fn run(job: Job) -> Result<Value, String> {
     // Validate model settings before state writes; credentials are never in a job or transcript.
-    job.validate_model_auth()?;
+    job.validate_model()?;
     let api_key = match job.auth {
         crate::config::AuthMode::Chatgpt => {
             let store = crate::auth::AuthStore::new().map_err(|e| e.to_string())?;
@@ -347,7 +347,13 @@ pub fn run(job: Job) -> Result<Value, String> {
             None => None,
         },
     };
-    let client = ChatClient::with_protocol(&job.endpoint, &job.model, api_key, job.protocol)?;
+    let client = ChatClient::with_protocol_timeout(
+        &job.endpoint,
+        &job.model,
+        api_key,
+        job.protocol,
+        job.model_timeout,
+    )?;
     let state = prepare_state(&job)?;
     let _lock = StateLock::acquire(&state)?;
     let mut policy = Policy::load(&state.join("policy.json"))?;

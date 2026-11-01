@@ -10,6 +10,14 @@ pub enum Protocol {
 }
 
 const RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
+pub(crate) const DEFAULT_MODEL_TIMEOUT: u64 = 180;
+
+pub(crate) fn validate_model_timeout(seconds: u64) -> Result<(), String> {
+    if !(1..=900).contains(&seconds) {
+        return Err("model_timeout must be 1..900 seconds".into());
+    }
+    Ok(())
+}
 
 // Serialize before translating/cloning a transcript, and cap the wire request too.
 struct RequestBuffer(Vec<u8>);
@@ -50,6 +58,17 @@ impl ChatClient {
         api_key: Option<String>,
         protocol: Protocol,
     ) -> Result<Self, String> {
+        Self::with_protocol_timeout(endpoint, model, api_key, protocol, DEFAULT_MODEL_TIMEOUT)
+    }
+    /// Whole-request deadline, including response reads; never an automatic retry.
+    pub fn with_protocol_timeout(
+        endpoint: &str,
+        model: &str,
+        api_key: Option<String>,
+        protocol: Protocol,
+        timeout_seconds: u64,
+    ) -> Result<Self, String> {
+        validate_model_timeout(timeout_seconds)?;
         if model.trim().is_empty() || model.len() > 256 {
             return Err("invalid model name".into());
         }
@@ -95,7 +114,7 @@ impl ChatClient {
                 // Non-streaming local inference can take over a minute to generate
                 // a complete tool call. Keep a bounded whole-response deadline,
                 // including reads. OS DNS lookup is not interruptible by ureq.
-                .timeout(std::time::Duration::from_secs(180))
+                .timeout(std::time::Duration::from_secs(timeout_seconds))
                 .build(),
             endpoint: url.to_string(),
             model: model.into(),

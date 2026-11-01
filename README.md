@@ -41,6 +41,8 @@ This reports file hashes, format candidates and skipped entries without running 
 
 Use `examples/reconstruction/job.example.json` as a template. Set its absolute external verifier path and choose your model endpoint. Relative source/state paths resolve against the job file's directory. The state directory's parent must already exist; state must be outside the source.
 
+`model_timeout` optionally sets the whole-request deadline in seconds (default 180, allowed 1–900), including response reads. Slow local inference shared by parallel analysts may need a larger value, for example 600. This is not a per-byte inactivity timer, a whole-job deadline, or an automatic retry. Exhausted model requests remain infrastructure errors and do not train the routing policy. OS DNS lookup remains subject to the system resolver rather than this interruptible deadline.
+
 Verifier argv must name either one absolute external executable or an absolute interpreter followed by an absolute external script (Python's `-I` is optionally supported before the script). Relative scripts, inline code, module discovery, and extra arguments are rejected. For other invocation patterns, supply a trusted external wrapper that owns the checks. Verifier files must be outside both source and state directories; candidate-controlled tests cannot be the reward authority.
 
 ```sh

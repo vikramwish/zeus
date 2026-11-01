@@ -34,6 +34,8 @@ pub struct Job {
     pub context: String,
     #[serde(default = "turns")]
     pub max_turns: usize,
+    #[serde(default = "model_timeout")]
+    pub model_timeout: u64,
     #[serde(default)]
     pub verifier: Vec<String>,
     #[serde(default = "timeout")]
@@ -50,6 +52,9 @@ fn turns() -> usize {
 fn timeout() -> u64 {
     30
 }
+fn model_timeout() -> u64 {
+    crate::model::DEFAULT_MODEL_TIMEOUT
+}
 #[derive(Clone, Copy, Default)]
 pub struct Approvals {
     pub network: bool,
@@ -57,7 +62,8 @@ pub struct Approvals {
     pub mcp: bool,
 }
 impl Job {
-    pub(crate) fn validate_model_auth(&self) -> Result<(), String> {
+    pub(crate) fn validate_model(&self) -> Result<(), String> {
+        crate::model::validate_model_timeout(self.model_timeout)?;
         if self.auth == AuthMode::Chatgpt
             && (self.protocol != Protocol::Responses
                 || self.endpoint != "https://api.openai.com/v1/responses"
@@ -78,7 +84,7 @@ impl Job {
         }
         let mut job: Self =
             serde_json::from_slice(&bytes).map_err(|e| format!("invalid job: {e}"))?;
-        job.validate_model_auth()?;
+        job.validate_model()?;
         if job.task.trim().is_empty() || job.task.len() > 32768 {
             return Err("task must be 1..32768 bytes".into());
         }
