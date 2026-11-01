@@ -58,6 +58,8 @@ For API connections, credentials come from the named `api_key_env` environment v
 
 A first completed training run uses the direct route. The next run in the same context explores parallel analysis; subsequent choices use accumulated verified outcomes. A verifier that already passes causes an `already_verified` no-op instead of unnecessary model work. Without a verifier, output is explicitly `unverified` and the CLI returns nonzero.
 
+Parallel planner responses are limited to 64 KiB of UTF-8 text, including whitespace and framing. The accepted form is one JSON object containing only `tasks`: an array of 2–3 non-whitespace strings, each at most 4,096 UTF-8 bytes. Optional surrounding whitespace and a single complete, non-nested leading `<think>...</think>` envelope are accepted; the envelope is ignored only at this planner boundary. Fences, other prose, repeated envelopes, multiple JSON values, duplicate/unknown fields and invalid tasks fail closed before workers or the implementer start, without a direct-route fallback or policy update. Raw planner output remains in the private audit. This deliberately narrow compatibility rule does not normalize worker/implementer output or grant analysts additional capabilities.
+
 Each run retains its original/final inventories, `events.jsonl`, evidence findings, final report or infrastructure error, and the candidate directory. Policy state lives outside the candidate. A `run.lock` prevents concurrent writers to one state store. After a killed process, inspect the recorded PID before manually removing a stale lock. No automatic promotion, deployment, or overwrite of the original is performed.
 
 ## Reverse-engineering scope

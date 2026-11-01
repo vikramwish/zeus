@@ -387,6 +387,26 @@ pub fn run(job: Job) -> Result<Value, String> {
         }
     }
 }
+// Planner-only framing boundary. Keep the original AgentResult in the audit;
+// never search for JSON inside arbitrary prose or rewrite other model output.
+fn planner_json(text: &str) -> Result<&str, String> {
+    if text.len() > 64 * 1024 {
+        return Err("planner response exceeds 64 KiB".into());
+    }
+    let text = text.trim();
+    if let Some(rest) = text.strip_prefix("<think>") {
+        let (envelope, json) = rest
+            .split_once("</think>")
+            .ok_or("planner has an incomplete think envelope")?;
+        if envelope.contains("<think>") {
+            return Err("planner has a nested think envelope".into());
+        }
+        Ok(json.trim())
+    } else {
+        Ok(text)
+    }
+}
+
 fn run_inner(
     job: &Job,
     client: &ChatClient,
@@ -478,15 +498,24 @@ fn run_inner(
             "planner",
             serde_json::to_value(&plan).map_err(|e| e.to_string())?,
         )?;
-        let plan_value: Value = serde_json::from_str(&plan.text)
-            .map_err(|_| "planner must return JSON without fences")?;
-        let tasks = plan_value["tasks"]
-            .as_array()
-            .ok_or("planner missing tasks")?;
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Plan {
+            tasks: Vec<String>,
+        }
+        let plan_json = planner_json(&plan.text)?;
+        // Deserialize the entire object, rejecting duplicate/unknown fields as
+        // well as trailing content. A derived struct alone also accepts arrays.
+        if !plan_json.starts_with('{') {
+            return Err("planner must return a JSON object with only tasks".into());
+        }
+        let plan_value: Plan = serde_json::from_str(plan_json)
+            .map_err(|_| "planner must return a JSON object with only tasks")?;
+        let tasks = plan_value.tasks;
         if !(2..=3).contains(&tasks.len()) {
             return Err("planner must produce 2..3 tasks".into());
         }
-        let tasks=tasks.iter().map(|t|{let t=t.as_str().ok_or("plan task must be string")?;if t.trim().is_empty()||t.len()>4096{return Err("invalid plan task".to_string());}Ok(format!("{task}\nYour read-only investigation question: {t}\nReturn cited findings and unknowns. You cannot write or execute commands."))}).collect::<Result<Vec<_>,String>>()?;
+        let tasks=tasks.iter().map(|t|{if t.trim().is_empty()||t.len()>4096{return Err("invalid plan task".to_string());}Ok(format!("{task}\nYour read-only investigation question: {t}\nReturn cited findings and unknowns. You cannot write or execute commands."))}).collect::<Result<Vec<_>,String>>()?;
         let workers = agent::run_parallel(client, &analyst, SYSTEM, &tasks, job.max_turns.min(8))?;
         for (i, worker) in workers.iter().enumerate() {
             shared
