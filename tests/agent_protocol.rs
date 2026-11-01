@@ -47,6 +47,183 @@ fn agent_validates_entire_tool_batch_before_any_dispatch() {
 }
 
 #[test]
+fn agent_denied_batch_recovers_with_fresh_call_and_paired_transcript() {
+    // An allowed call in a denied batch must never be dispatched or replayed.
+    for mixed in [false, true] {
+        let mut denied = vec![tool("denied", "write_file", r#"{"path":"forbidden"}"#)];
+        if mixed {
+            denied.insert(0, tool("skipped", "inspect", r#"{"path":"skipped"}"#));
+        }
+        let first = json!({"role":"assistant","tool_calls":denied});
+        let second = json!({"role":"assistant","tool_calls":[tool("fresh", "inspect", r#"{"path":"input.txt"}"#)]});
+        let final_message = json!({"role":"assistant","content":"recovered"});
+        let server = Fixture::new(vec![first.clone(), second.clone(), final_message.clone()]);
+        let host = Host::default();
+        let result = agent::run(&server.client(), &host, "s", "t", 3).unwrap();
+        assert_eq!(result.text, "recovered");
+        assert_eq!(result.tool_calls, denied.len() + 1);
+        assert_eq!(
+            *host.calls.lock().unwrap(),
+            vec![("inspect".into(), json!({"path":"input.txt"}))]
+        );
+        let requests = server.requests.lock().unwrap();
+        let transcript = requests[1]["messages"].as_array().unwrap();
+        assert_eq!(transcript[2], first);
+        for (call, response) in denied.iter().zip(&transcript[3..]) {
+            assert_eq!(response["role"], "tool");
+            assert_eq!(response["tool_call_id"], call["id"]);
+            let content: Value =
+                serde_json::from_str(response["content"].as_str().unwrap()).unwrap();
+            let error = content["error"].as_str().unwrap();
+            if call["id"] == "denied" {
+                assert!(error.contains("unknown or unauthorized"), "{error}");
+            } else {
+                assert!(error.contains("batch skipped"), "{error}");
+            }
+        }
+        assert_eq!(transcript.len(), 3 + denied.len());
+        let mut expected = transcript.clone();
+        expected.push(second);
+        expected.push(json!({"role":"tool","tool_call_id":"fresh","content":json!({"observed":{"path":"input.txt"}}).to_string()}));
+        assert_eq!(requests[2]["messages"], json!(expected));
+        expected.push(final_message);
+        assert_eq!(result.messages, expected);
+        assert!(requests.iter().all(|r| r["tools"] == requests[0]["tools"]));
+    }
+}
+
+#[test]
+fn agent_denials_and_skipped_calls_consume_existing_budgets() {
+    for mixed in [false, true] {
+        let calls: Vec<_> = (0..64)
+            .map(|i| {
+                tool(
+                    &format!("c{i}"),
+                    if mixed && i != 0 {
+                        "inspect"
+                    } else {
+                        "write_file"
+                    },
+                    "{}",
+                )
+            })
+            .collect();
+        let server = Fixture::new(vec![
+            json!({"role":"assistant","tool_calls":calls}),
+            json!({"role":"assistant","tool_calls":[tool("extra","inspect","{}")]}),
+        ]);
+        let host = Host::default();
+        assert_eq!(
+            agent::run(&server.client(), &host, "s", "t", 2).unwrap_err(),
+            "agent tool call limit exceeded"
+        );
+        assert!(host.calls.lock().unwrap().is_empty());
+        assert_eq!(server.requests.lock().unwrap().len(), 2);
+    }
+    let server = Fixture::new((0..2).map(|i| json!({"role":"assistant","tool_calls":[tool(&format!("d{i}"),"write_file","{}")]})).collect());
+    let host = Host::default();
+    assert_eq!(
+        agent::run(&server.client(), &host, "s", "t", 2).unwrap_err(),
+        "agent exhausted its turn limit"
+    );
+    assert!(host.calls.lock().unwrap().is_empty());
+    assert_eq!(server.requests.lock().unwrap().len(), 2);
+
+    let args = json!({"content":"x".repeat(700 * 1024)}).to_string();
+    let server = Fixture::new((0..2).map(|i| json!({"role":"assistant","tool_calls":[tool(&format!("d{i}"),"write_file",&args)]})).collect());
+    assert_eq!(
+        agent::run(
+            &server.client(),
+            &host,
+            "s",
+            &"x".repeat(3 * 1024 * 1024),
+            3
+        )
+        .unwrap_err(),
+        "agent context exceeds 4 MiB limit"
+    );
+    assert!(host.calls.lock().unwrap().is_empty());
+    assert_eq!(server.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn agent_denied_batch_still_prevalidates_all_protocol_fields() {
+    let cases = vec![
+        (tool("denied", "inspect", "{}"), "duplicate tool call ID"),
+        (tool("bad id", "inspect", "{}"), "invalid tool call ID"),
+        (tool("bad", "bad name", "{}"), "invalid tool name"),
+        (
+            tool("bad", "write_file", "not JSON"),
+            "invalid tool arguments",
+        ),
+        (
+            tool("bad", "inspect", "[]"),
+            "tool arguments must be a JSON object",
+        ),
+        (
+            json!({"id":"bad","type":"other","function":{"name":"inspect","arguments":"{}"}}),
+            "unsupported tool call type",
+        ),
+        (
+            json!({"id":"bad","type":"function","function":{"name":"write_file","arguments":{}}}),
+            "missing tool arguments",
+        ),
+    ];
+    for (bad, error) in cases {
+        let server = Fixture::new(vec![json!({"role":"assistant","tool_calls":[
+            tool("allowed", "inspect", "{}"), tool("denied", "write_file", "{}"), bad
+        ]})]);
+        let host = Host::default();
+        assert_eq!(
+            agent::run(&server.client(), &host, "s", "t", 3).unwrap_err(),
+            error
+        );
+        assert!(host.calls.lock().unwrap().is_empty());
+        assert_eq!(server.requests.lock().unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn agent_denied_and_skipped_ids_cannot_be_reused() {
+    for reused in ["denied", "skipped"] {
+        let server = Fixture::new(vec![
+            json!({"role":"assistant","tool_calls":[tool("skipped","inspect","{}"),tool("denied","write_file","{}")]}),
+            json!({"role":"assistant","tool_calls":[tool(reused,"inspect","{}")]}),
+        ]);
+        let host = Host::default();
+        assert_eq!(
+            agent::run(&server.client(), &host, "s", "t", 3).unwrap_err(),
+            "duplicate tool call ID"
+        );
+        assert!(host.calls.lock().unwrap().is_empty());
+        assert_eq!(server.requests.lock().unwrap().len(), 2);
+    }
+}
+
+struct FatalHost;
+impl agent::ToolHost for FatalHost {
+    fn schemas(&self) -> Vec<Value> {
+        Host::default().schemas()
+    }
+    fn call(&self, _: &str, _: Value) -> Result<Value, String> {
+        Err("host fatal error".into())
+    }
+}
+
+#[test]
+fn agent_host_errors_remain_fatal_after_denial_recovery() {
+    let server = Fixture::new(vec![
+        json!({"role":"assistant","tool_calls":[tool("denied","write_file","{}")]}),
+        json!({"role":"assistant","tool_calls":[tool("fresh","inspect","{}")]}),
+    ]);
+    assert_eq!(
+        agent::run(&server.client(), &FatalHost, "s", "t", 3).unwrap_err(),
+        "host fatal error"
+    );
+    assert_eq!(server.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
 fn agent_rejects_reused_call_ids_across_turns() {
     let message = json!({"role":"assistant","tool_calls":[tool("same","inspect","{}")]});
     let server = Fixture::new(vec![message.clone(), message]);

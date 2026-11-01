@@ -12,6 +12,10 @@ use std::time::{Duration, Instant};
 // Deterministic loopback HTTP fixture exercising the real CLI and saved Parallel
 // policy. No credentials, paid inference, verifier, or model-quality claims.
 fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
+    exercise_case(plan, workers, deny_worker_write, true);
+}
+
+fn exercise_case(plan: &str, workers: usize, deny_worker_write: bool, recover: bool) {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source");
     let state = temp.path().join("state");
@@ -76,7 +80,7 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
             let mut bytes = vec![0; length];
             stream.read_exact(&mut bytes).unwrap();
             let request: Value = serde_json::from_slice(&bytes).unwrap();
-            assert!(requests.len() < 8, "unexpected retry/fallback");
+            assert!(requests.len() < 12, "unexpected retry/fallback");
             let writable = request["tools"]
                 .as_array()
                 .unwrap()
@@ -90,13 +94,44 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
                     .contains("Decompose the investigation"));
                 json!({"role":"assistant","content":planner_text})
             } else if !writable && deny_worker_write {
-                json!({"role":"assistant","content":null,"tool_calls":[{
-                    "id":"denied-write","type":"function","function":{
-                        "name":"write_file","arguments":json!({
-                            "path":"forbidden.txt","content":"bad","expected_sha256":null
-                        }).to_string()
+                let results: Vec<_> = request["messages"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|m| m["role"] == "tool")
+                    .collect();
+                if results.is_empty() || !recover {
+                    json!({"role":"assistant","content":null,"tool_calls":[{
+                        "id":format!("denied-write-{}", results.len()),"type":"function","function":{
+                            "name":"write_file","arguments":json!({
+                                "path":"forbidden.txt","content":"bad","expected_sha256":null
+                            }).to_string()
+                        }
+                    }]})
+                } else {
+                    assert_eq!(results[0]["tool_call_id"], "denied-write-0");
+                    let denial: Value =
+                        serde_json::from_str(results[0]["content"].as_str().unwrap()).unwrap();
+                    assert!(denial["error"]
+                        .as_str()
+                        .unwrap()
+                        .contains("unknown or unauthorized"));
+                    if results.len() == 1 {
+                        json!({"role":"assistant","content":null,"tool_calls":[{
+                            "id":"fresh-read","type":"function","function":{
+                                "name":"read_file","arguments":json!({"path":"input.txt"}).to_string()
+                            }
+                        }]})
+                    } else {
+                        assert_eq!(results.len(), 2);
+                        assert_eq!(results[1]["tool_call_id"], "fresh-read");
+                        assert!(results[1]["content"]
+                            .as_str()
+                            .unwrap()
+                            .contains("unchanged"));
+                        json!({"role":"assistant","content":"<think>synthetic fixture</think>unchanged report"})
                     }
-                }]})
+                }
             } else {
                 // Non-planner output must remain untouched, including wrapper tags.
                 json!({"role":"assistant","content":"<think>synthetic fixture</think>unchanged report"})
@@ -118,7 +153,7 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
         json!({
             "task":"Investigate the fixture without changing files", "source":source,
             "state_dir":state,"context":"planner-contract","endpoint":endpoint,
-            "model":"deterministic-local-fixture","max_turns":2
+            "model":"deterministic-local-fixture","max_turns":3
         })
         .to_string(),
     )
@@ -182,14 +217,18 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
         fs::read_to_string(run.join("candidate/input.txt")).unwrap(),
         "unchanged"
     );
+    assert!(!source.join("forbidden.txt").exists());
     assert!(!run.join("candidate/forbidden.txt").exists());
-    if workers == 0 || deny_worker_write {
+    if workers == 0 || (deny_worker_write && !recover) {
         assert!(!run.join("report.json").exists());
         let error: Value =
             serde_json::from_slice(&fs::read(run.join("error.json")).unwrap()).unwrap();
         assert_eq!(error["status"], "infrastructure_error");
         assert_eq!(error["policy_updated"], false);
-        assert_eq!(requests.len(), 1 + workers);
+        assert_eq!(
+            requests.len(),
+            1 + workers * if deny_worker_write { 3 } else { 1 }
+        );
         assert!(events
             .iter()
             .all(|e| e["kind"] != "worker" && e["kind"] != "implementer"));
@@ -197,7 +236,7 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
             assert!(error["error"]
                 .as_str()
                 .unwrap()
-                .contains("unknown tool requested"));
+                .contains("agent exhausted its turn limit"));
         } else {
             let diagnostic = error["error"].as_str().unwrap();
             assert!(
@@ -219,7 +258,10 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
             report["summary"],
             "<think>synthetic fixture</think>unchanged report"
         );
-        assert_eq!(requests.len(), workers + 2);
+        assert_eq!(
+            requests.len(),
+            workers * if deny_worker_write { 3 } else { 1 } + 2
+        );
         assert_eq!(
             events.iter().filter(|e| e["kind"] == "worker").count(),
             workers
@@ -228,7 +270,8 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
             events.iter().filter(|e| e["kind"] == "implementer").count(),
             1
         );
-        for request in &requests[1..=workers] {
+        let analyst_requests = &requests[1..requests.len() - 1];
+        for request in analyst_requests {
             let tools = request["tools"].as_array().unwrap();
             assert!(tools.iter().all(|tool| {
                 let name = tool["function"]["name"].as_str().unwrap();
@@ -238,6 +281,17 @@ fn exercise(plan: &str, workers: usize, deny_worker_write: bool) {
                 .as_str()
                 .unwrap()
                 .contains("Your read-only investigation question:"));
+        }
+        if deny_worker_write {
+            let dispatched: Vec<_> = events
+                .iter()
+                .filter(|e| e["kind"] == "tool_request")
+                .collect();
+            assert_eq!(dispatched.len(), workers);
+            assert!(dispatched.iter().all(|e| e["data"]["name"] == "read_file"));
+            for worker in events.iter().filter(|e| e["kind"] == "worker") {
+                assert_eq!(worker["data"]["result"]["tool_calls"], 2);
+            }
         }
         assert!(requests.last().unwrap()["tools"]
             .as_array()
@@ -328,6 +382,11 @@ fn plain_json_and_exact_bounds_remain_supported() {
 #[test]
 fn analysts_cannot_gain_write_capabilities_from_valid_plan() {
     exercise("<think>fixture</think>{\"tasks\":[\"a\",\"b\"]}", 2, true);
+}
+
+#[test]
+fn never_correcting_analyst_denial_remains_bounded_error() {
+    exercise_case(r#"{"tasks":["a","b"]}"#, 2, true, false);
 }
 
 #[test]

@@ -153,9 +153,6 @@ pub fn run(
                 .as_str()
                 .filter(|s| identifier(s, 64))
                 .ok_or("invalid tool name")?;
-            if !allowed.contains(name) {
-                return Err("unknown tool requested".into());
-            }
             let args: Value = serde_json::from_str(
                 call["function"]["arguments"]
                     .as_str()
@@ -167,9 +164,21 @@ pub fn run(
             }
             validated.push((id, name, args));
         }
+        // A well-formed capability denial is recoverable, but never dispatch a
+        // partial batch. Denied and skipped calls consume IDs and the call budget;
+        // only a subsequent model turn can request fresh calls.
+        let denied = validated.iter().any(|(_, name, _)| !allowed.contains(name));
+        tool_calls += validated.len();
         for (id, name, args) in validated {
-            let result = host.call(name, args)?;
-            tool_calls += 1;
+            let result = if denied {
+                if allowed.contains(name) {
+                    json!({"error":"batch skipped: another call requested an unknown or unauthorized tool; no calls were executed"})
+                } else {
+                    json!({"error":"unknown or unauthorized tool: not in the advertised allowlist; no calls were executed"})
+                }
+            } else {
+                host.call(name, args)?
+            };
             let content = result.to_string();
             if content.len() > MAX_TOOL_RESULT_BYTES {
                 return Err("tool result exceeds 256 KiB limit".into());

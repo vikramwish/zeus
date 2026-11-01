@@ -56,6 +56,8 @@ Permissions are separate:
 - `--allow-exec`: run the fixed user-selected verifier in the macOS sandbox. The model cannot select arbitrary commands.
 - `--allow-mcp`: launch the configured MCP programs on the host and expose only allowlisted tools. This is an approval for executable host integrations, **not** a sandbox. Approve only trusted servers and tool operations.
 
+Well-formed tool batches containing an unadvertised capability execute no calls: Zeus returns a denial for that call and a skipped result for the rest of the batch. The model can correct its request with fresh call IDs within the existing turn, call and context budgets. Denied attempts consume those budgets; calls are never automatically replayed. Malformed calls, duplicate IDs and infrastructure/host failures remain fatal. Read-only analysts never gain write or execution access through recovery.
+
 For API connections, credentials come from the named `api_key_env` environment variable, never from committed job files or automatic Hermes credential discovery. Subscription connections use the explicit ChatGPT login flow instead. Do not paste credentials into tasks. See [model connections](docs/PROVIDERS.md) for subscription login commands, model discovery, supported protocols, and example connection settings.
 
 A first completed training run uses the direct route. The next run in the same context explores parallel analysis; subsequent choices use accumulated verified outcomes. A verifier that already passes causes an `already_verified` no-op instead of unnecessary model work. Without a verifier, output is explicitly `unverified` and the CLI returns nonzero.
