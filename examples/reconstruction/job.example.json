@@ -1,0 +1,12 @@
+{
+  "task": "Inspect kv.py and repair persistence while preserving its existing CLI protocol and error behavior. Successful mutations must survive separate process invocations, with atomic publication. Record evidence-backed findings and verify the candidate.",
+  "source": "source",
+  "state_dir": "runs",
+  "endpoint": "http://127.0.0.1:1234/v1/chat/completions",
+  "model": "qwen/qwen3.5-9b",
+  "context": "python-cli-reconstruction",
+  "max_turns": 12,
+  "verifier": ["/opt/homebrew/bin/python3", "-I", "/REPLACE/WITH/ABSOLUTE/PATH/zeus/examples/reconstruction/verify.py"],
+  "verifier_timeout": 30,
+  "mcp": []
+}
