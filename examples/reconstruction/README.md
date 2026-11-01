@@ -143,7 +143,7 @@ ignored, under `runs/acceptance-1793510220883704000/`:
 | `run-1793510587887846000-38536` | Direct retry: CLI exit 0, `status: verified`, final `PASS: 82 checks, 0 failures`; baseline was 82 checks / 11 failures. |
 | `run-1793510846996568000-43530` | Same-context next run selected Parallel, then exited 1: `planner must return JSON without fences`. No parallel acceptance or policy reward claimed. |
 
-The final policy contains Direct 1 trial / 1 success and Parallel 0 trials /
+At that checkpoint the policy contained Direct 1 trial / 1 success and Parallel 0 trials /
 0 successes. Logs are `runs/acceptance-direct.log`,
 `runs/acceptance-direct-retry.log`, and `runs/acceptance-parallel.log`; the local
 job is `examples/reconstruction/job.acceptance.local.json`. Run directories retain
@@ -153,3 +153,35 @@ uses a fixed `.tmp` sibling and does not clean it up after every possible failur
 concurrent writers and crash durability remain outside the declared contract.
 The successful public check does not erase these limits or the observed failed
 attempts.
+
+### Follow-up parallel acceptance (November 1, 2026)
+
+The same local model and unchanged 82-check verifier were exercised after the
+planner-envelope, per-job deadline, and denied-tool recovery corrections. Further
+failed attempts remained explicit infrastructure errors without policy rewards:
+one exhausted the original 180-second request deadline, two returned invalid or
+missing planner JSON, and one analyst requested a forbidden write before recovery
+was implemented. These failures were not relabeled as successful task outcomes.
+
+The successful run used `model_timeout: 600` and extra task hints requesting two
+short planning questions, read-only analysts focused on their assigned question,
+and implementation only by the writer. This is a prompted public exercise, not
+an unchanged-prompt comparison or a general reliability benchmark.
+
+- Run: `run-1793536452559326000-91094` in the same ignored state directory.
+- Actual CLI: exit 0, `strategy: Parallel`, `status: verified`, two analysts,
+  one implementation attempt.
+- Baseline: `FAIL: 82 checks, 11 failures`.
+- Final sandboxed verifier and separate independent rerun:
+  `PASS: 82 checks, 0 failures`.
+- Persisted policy: Direct 1 trial / 1 success; Parallel 1 trial / 1 success.
+  `learning.json` records the Parallel reward and its `report.json` proof.
+- Source template remained unchanged. Candidate SHA-256:
+  `580b87c1ba2ec25aa3acb34382c23866d3c92d39747897caacdd9dd8368a292f`.
+- External verifier SHA-256:
+  `d258fb95f6424d1a326026e8331d640822cd2290646655aa971c228fde9d0590`.
+
+The log is `runs/acceptance-parallel-recovery.log`. This successful run did not
+request forbidden tools; denial/recovery is separately proven by deterministic
+CLI fixtures. A single successful local run does not establish broad model
+reliability, subscription inference, or performance parity with another agent.
