@@ -26,6 +26,8 @@ fn full_run_edits_private_candidate_verifies_and_updates_policy() {
                 }
                 Err(e) => panic!("{e}"),
             };
+            // Accepted sockets inherit nonblocking mode on macOS.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(std::time::Duration::from_secs(3)))
                 .unwrap();

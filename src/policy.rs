@@ -12,7 +12,9 @@ const MAX_CONTEXT_BYTES: usize = 256;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Strategy {
+    #[serde(alias = "direct")]
     Direct,
+    #[serde(alias = "parallel")]
     Parallel,
 }
 

@@ -48,6 +48,10 @@ fn verifier_exec(fd: &str, argv: &[String]) -> Result<(), String> {
 const USAGE: &str = "Usage:
   zeus inspect <path>
   zeus run <job.json> [--allow-network] [--allow-exec] [--allow-mcp]
+  zeus console <job.json> [--allow-network] [--allow-exec] [--allow-mcp]
+  zeus sessions list <state-dir>
+  zeus sessions search <state-dir> <query>
+  zeus sessions show <state-dir> <run-id>
   zeus auth login chatgpt [--new-account]
   zeus auth status chatgpt
   zeus auth logout chatgpt
@@ -106,6 +110,86 @@ fn auth_command(action: &str, new_account: bool) -> Result<(), String> {
     }
 }
 
+fn run_job(job: zeus::config::Job) -> Result<(), String> {
+    let report = zeus::runtime::run(job)?;
+    print_json(&report)?;
+    match report["status"].as_str() {
+        Some("verified" | "already_verified") => Ok(()),
+        Some("unverified") => {
+            Err("analysis finished without an external verifier; candidate is unverified".into())
+        }
+        _ => Err("verification did not pass; see retained report".into()),
+    }
+}
+
+const CONSOLE_HELP: &str = "Independent task console, not transcript resume. Each task snapshots the original source again.\nEnter a task, or /run to run the configured task.\n/help | /list | /search <query> | /show <exact-run-id> | /quit\nApprovals and job settings are fixed for this console invocation; no pending calls are replayed.";
+
+fn console(job: zeus::config::Job) -> Result<(), String> {
+    use std::io::{BufRead, Read, Write};
+    eprintln!("{CONSOLE_HELP}");
+    let stdin = std::io::stdin();
+    let mut input = stdin.lock();
+    let mut failed = false;
+    loop {
+        eprint!("zeus> ");
+        std::io::stderr().flush().map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        let count = input
+            .by_ref()
+            .take(32771)
+            .read_until(b'\n', &mut bytes)
+            .map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        if bytes.len() > 32770 {
+            return Err("console line exceeds 32768 task bytes".into());
+        }
+        let line = String::from_utf8(bytes).map_err(|_| "console input must be UTF-8")?;
+        let line = line.trim_end_matches(['\r', '\n']);
+        if line.len() > 32768 {
+            return Err("console line exceeds 32768 task bytes".into());
+        }
+        let command = line.trim();
+        if command.is_empty() {
+            continue;
+        }
+        let result = match command {
+            "/quit" => break,
+            "/help" => {
+                eprintln!("{CONSOLE_HELP}");
+                Ok(())
+            }
+            "/list" => zeus::session::list(&job.state_dir, None).and_then(|v| print_json(&v)),
+            "/run" => run_job(job.clone()),
+            text if text.starts_with("/search ") => {
+                zeus::session::list(&job.state_dir, Some(text[8..].trim()))
+                    .and_then(|v| print_json(&v))
+            }
+            text if text.starts_with("/show ") => {
+                zeus::session::show(&job.state_dir, text[6..].trim()).and_then(|v| print_json(&v))
+            }
+            text if text.starts_with('/') => {
+                Err("unknown console command; use /help (no resume or shell commands)".into())
+            }
+            _ => {
+                let mut next = job.clone();
+                next.task = line.to_owned();
+                run_job(next)
+            }
+        };
+        if let Err(error) = result {
+            eprintln!("zeus: {error}");
+            failed = true;
+        }
+    }
+    if failed {
+        Err("one or more console tasks or commands failed or remained unverified".into())
+    } else {
+        Ok(())
+    }
+}
+
 fn execute() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
@@ -144,7 +228,16 @@ fn execute() -> Result<(), String> {
             );
             Ok(())
         }
-        [command, path, flags @ ..] if command == "run" => {
+        [command, action, state] if command == "sessions" && action == "list" => {
+            print_json(&zeus::session::list(Path::new(state), None)?)
+        }
+        [command, action, state, query] if command == "sessions" && action == "search" => {
+            print_json(&zeus::session::list(Path::new(state), Some(query))?)
+        }
+        [command, action, state, id] if command == "sessions" && action == "show" => {
+            print_json(&zeus::session::show(Path::new(state), id)?)
+        }
+        [command, path, flags @ ..] if command == "run" || command == "console" => {
             let approval = zeus::config::Approvals {
                 network: flags.iter().any(|f| f == "--allow-network"),
                 exec: flags.iter().any(|f| f == "--allow-exec"),
@@ -157,18 +250,10 @@ fn execute() -> Result<(), String> {
                 return Err("unknown run flag".into());
             }
             let job = zeus::config::Job::load(Path::new(path), approval)?;
-            let report = zeus::runtime::run(job)?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
-            );
-            match report["status"].as_str() {
-                Some("verified" | "already_verified") => Ok(()),
-                Some("unverified") => Err(
-                    "analysis finished without an external verifier; candidate is unverified"
-                        .into(),
-                ),
-                _ => Err("verification did not pass; see retained report".into()),
+            if command == "console" {
+                console(job)
+            } else {
+                run_job(job)
             }
         }
         _ => Err(USAGE.into()),

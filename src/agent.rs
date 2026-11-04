@@ -34,9 +34,8 @@ fn push_message(
     Ok(())
 }
 
-/// Runs independent contexts in batches of at most three scoped workers.
-/// A failed batch is fully joined; subsequent batches are not started.
-/// Capability restrictions (e.g. read-only analysts) belong to the supplied host.
+/// Runs independent contexts with the default limit of three scoped workers.
+/// See [`run_parallel_with_limit`] for ordering and failure semantics.
 pub fn run_parallel(
     client: &ChatClient,
     host: &dyn ToolHost,
@@ -44,26 +43,106 @@ pub fn run_parallel(
     tasks: &[String],
     max_turns: usize,
 ) -> Result<Vec<AgentResult>, String> {
-    let mut results = Vec::new();
-    for batch in tasks.chunks(3) {
-        let joined = std::thread::scope(|scope| {
-            let handles: Vec<_> = batch
-                .iter()
-                .map(|task| scope.spawn(move || run(client, host, system, task, max_turns)))
-                .collect();
-            // Collect joins before propagating any error, including worker panics.
-            handles
-                .into_iter()
-                .map(|handle| {
-                    handle
-                        .join()
-                        .unwrap_or_else(|_| Err("agent worker panicked".into()))
-                })
-                .collect::<Vec<_>>()
-        });
-        for result in joined {
-            results.push(result?);
+    run_parallel_with_limit(client, host, system, tasks, max_turns, 3)
+}
+
+/// Runs independent contexts on a bounded, work-conserving queue (1..=3 workers).
+/// Results and errors use input task order, not completion order. A completed
+/// failure closes admission; already admitted siblings finish and are joined.
+/// Capability restrictions belong to the supplied host, not this scheduler.
+pub fn run_parallel_with_limit(
+    client: &ChatClient,
+    host: &dyn ToolHost,
+    system: &str,
+    tasks: &[String],
+    max_turns: usize,
+    max_workers: usize,
+) -> Result<Vec<AgentResult>, String> {
+    run_tasks(tasks.len(), max_workers, |index| {
+        run(client, host, system, &tasks[index], max_turns)
+    })
+}
+
+/// Shared scheduling boundary for uniform and per-task capability hosts.
+/// Claims and failure publication use one short critical section. No model or
+/// tool work runs under that lock; idle workers immediately claim the next task.
+pub(crate) fn run_tasks<T: Send>(
+    task_count: usize,
+    max_workers: usize,
+    task: impl Fn(usize) -> Result<T, String> + Sync,
+) -> Result<Vec<T>, String> {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::Mutex;
+    if !(1..=3).contains(&max_workers) {
+        return Err("worker limit must be between 1 and 3".into());
+    }
+    struct Queue<T> {
+        next: usize,
+        stopped: bool,
+        results: Vec<Option<Result<T, String>>>,
+    }
+    let queue = Mutex::new(Queue {
+        next: 0,
+        stopped: false,
+        results: (0..task_count).map(|_| None).collect(),
+    });
+    std::thread::scope(|scope| -> Result<(), String> {
+        let mut handles = Vec::new();
+        let mut launch_error = None;
+        for _ in 0..max_workers.min(task_count) {
+            let (queue, task) = (&queue, &task);
+            match std::thread::Builder::new().spawn_scoped(scope, move || loop {
+                let index = {
+                    let mut state = queue.lock().map_err(|_| "scheduler lock poisoned")?;
+                    if state.stopped || state.next == task_count {
+                        return Ok::<(), String>(());
+                    }
+                    let index = state.next;
+                    state.next += 1;
+                    index
+                };
+                let result = catch_unwind(AssertUnwindSafe(|| task(index)))
+                    .unwrap_or_else(|_| Err("agent worker panicked".into()));
+                let mut state = queue.lock().map_err(|_| "scheduler lock poisoned")?;
+                state.stopped |= result.is_err();
+                state.results[index] = Some(result);
+            }) {
+                Ok(handle) => handles.push(handle),
+                Err(error) => {
+                    // Thread-creation failures are infrastructure errors; do not
+                    // detach successfully started workers or admit more tasks.
+                    if let Ok(mut state) = queue.lock() {
+                        state.stopped = true;
+                    }
+                    launch_error = Some(format!("cannot start agent worker: {error}"));
+                    break;
+                }
+            }
         }
+        let joined: Vec<_> = handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .unwrap_or_else(|_| Err("agent worker panicked".into()))
+            })
+            .collect();
+        if let Some(error) = launch_error {
+            return Err(error);
+        }
+        for result in joined {
+            result?;
+        }
+        Ok(())
+    })?;
+    let state = queue.into_inner().map_err(|_| "scheduler lock poisoned")?;
+    let mut results = Vec::with_capacity(task_count);
+    for result in state.results.into_iter().flatten() {
+        results.push(result?);
+    }
+    // No task can be skipped without an error having closed admission.
+    if results.len() != task_count {
+        return Err("scheduler ended without completing every task".into());
     }
     Ok(results)
 }

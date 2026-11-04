@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Zeus — concurrent execution for agentic coding</title>
+  <desc id="desc">A conceptual execution diagram: a validated plan feeds three concurrent workers, which join before integration and external verification. This is an architecture illustration, not a live dashboard.</desc>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1a2633" stroke-width="1"/></pattern>
+    <linearGradient id="beam" x1="0" x2="1"><stop stop-color="#6ee7d2"/><stop offset="1" stop-color="#6ee7d2" stop-opacity="0.08"/></linearGradient>
+  </defs>
+  <rect width="1200" height="560" rx="16" fill="#090e15"/>
+  <rect x="620" width="580" height="560" fill="url(#grid)"/>
+  <path d="M40 40H1160" stroke="#263440"/>
+  <circle cx="43" cy="40" r="3" fill="#6ee7d2"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" letter-spacing="2" fill="#9cabbc">
+    <text x="40" y="76">NATIVE RUST / AGENT RUNTIME</text>
+    <text x="1160" y="76" text-anchor="end">EARLY IMPLEMENTATION</text>
+  </g>
+  <path d="M52 119H102L73 155H101L44 215L62 169H36Z" fill="#6ee7d2"/>
+  <text x="118" y="212" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="700" letter-spacing="-6" fill="#f1f5f9">ZEUS</text>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#f1f5f9" font-size="32" font-weight="500">
+    <text x="40" y="282">Concurrent execution.</text>
+    <text x="40" y="324">For agentic coding.</text>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#9cabbc">
+    <text x="40" y="376">Independent work. Explicit file ownership.</text>
+    <text x="40" y="402">Integration after every worker joins.</text>
+  </g>
+  <g fill="none" stroke="#476b70" stroke-width="2">
+    <path d="M692 203V237H630V270M692 237H809V270M809 237H988V270"/>
+    <path d="M630 328V366H809M809 328V394M988 328V366H809"/>
+    <path d="M897 421H955"/>
+  </g>
+  <g fill="#0e1822" stroke="#324550">
+    <rect x="608" y="145" width="168" height="58" rx="6"/>
+    <rect x="552" y="270" width="156" height="58" rx="6"/>
+    <rect x="731" y="270" width="156" height="58" rx="6"/>
+    <rect x="910" y="270" width="156" height="58" rx="6"/>
+    <rect x="721" y="394" width="176" height="54" rx="6"/>
+    <rect x="955" y="394" width="176" height="54" rx="6" stroke="#6ee7d2"/>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" text-anchor="middle" fill="#e2e8f0">
+    <text x="692" y="179">VALIDATED PLAN</text>
+    <text x="630" y="304">WORKER 01</text><text x="809" y="304">WORKER 02</text><text x="988" y="304">WORKER 03</text>
+    <text x="809" y="426">INTEGRATE</text><text x="1043" y="426" fill="#6ee7d2">VERIFY</text>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#9cabbc">
+    <text x="839" y="229">DISJOINT FILE SCOPES</text><text x="824" y="384">JOIN BARRIER</text>
+  </g>
+  <path d="M40 477H1160" stroke="url(#beam)"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#9cabbc">
+    <text x="40" y="516">BOUNDED CONCURRENCY / RETAINED EVIDENCE</text>
+    <text x="1160" y="516" text-anchor="end">EXECUTION MODEL · NOT LIVE TELEMETRY</text>
+  </g>
+</svg>

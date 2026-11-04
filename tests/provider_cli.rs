@@ -25,6 +25,8 @@ fn cli_uses_selected_responses_protocol_without_api_billing_fallback() {
                 Err(e) => panic!("{e}"),
             }
         };
+        // Accepted sockets inherit nonblocking mode on macOS.
+        stream.set_nonblocking(false).unwrap();
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .unwrap();

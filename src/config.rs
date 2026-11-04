@@ -17,6 +17,69 @@ pub struct ServerConfig {
     pub command: Vec<String>,
     pub allowed_tools: Vec<String>,
 }
+/// User-owned limits. Repository text and model plans cannot enlarge them.
+#[derive(Clone, Debug, serde::Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Autonomy {
+    /// None preserves whole-candidate editing; Some([]) denies model file writes.
+    pub write_paths: Option<Vec<String>>,
+    pub max_repairs: usize,
+    /// One shared request budget for planner, workers, integration and repairs.
+    pub max_model_calls: Option<usize>,
+}
+impl Default for Autonomy {
+    fn default() -> Self {
+        Self {
+            write_paths: None,
+            max_repairs: 2,
+            max_model_calls: None,
+        }
+    }
+}
+impl Autonomy {
+    fn validate(&self) -> Result<(), String> {
+        if self.max_repairs > 8 {
+            return Err("autonomy.max_repairs must be 0..8".into());
+        }
+        if self
+            .max_model_calls
+            .is_some_and(|n| !(1..=1024).contains(&n))
+        {
+            return Err("autonomy.max_model_calls must be 1..1024".into());
+        }
+        if let Some(paths) = &self.write_paths {
+            if paths.len() > 128 {
+                return Err("autonomy.write_paths permits at most 128 exact files".into());
+            }
+            for (index, path) in paths.iter().enumerate() {
+                if path.is_empty()
+                    || path.len() > 4096
+                    || path.contains('\\')
+                    || path.chars().any(char::is_control)
+                    || path
+                        .split('/')
+                        .any(|p| p.is_empty() || p == "." || p == "..")
+                    || !Path::new(path)
+                        .components()
+                        .all(|p| matches!(p, std::path::Component::Normal(_)))
+                {
+                    return Err(
+                        "autonomy.write_paths requires canonical relative exact file paths".into(),
+                    );
+                }
+                if paths[..index].iter().any(|other| {
+                    Path::new(path).starts_with(other) || Path::new(other).starts_with(path)
+                }) {
+                    return Err(
+                        "autonomy.write_paths contains duplicate or overlapping paths".into(),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Job {
@@ -32,6 +95,11 @@ pub struct Job {
     pub auth: AuthMode,
     #[serde(default = "context")]
     pub context: String,
+    /// Explicit user routing; omission retains learned direct/parallel selection.
+    #[serde(default)]
+    pub strategy: Option<crate::policy::Strategy>,
+    #[serde(default)]
+    pub autonomy: Autonomy,
     #[serde(default = "turns")]
     pub max_turns: usize,
     #[serde(default = "model_timeout")]
@@ -63,6 +131,10 @@ pub struct Approvals {
 }
 impl Job {
     pub(crate) fn validate_model(&self) -> Result<(), String> {
+        self.autonomy.validate()?;
+        if self.autonomy.write_paths.is_some() && !self.mcp.is_empty() {
+            return Err("scoped autonomy cannot expose unsandboxed MCP tools; remove MCP or explicitly use unrestricted candidate file scope".into());
+        }
         crate::model::validate_model_timeout(self.model_timeout)?;
         if self.auth == AuthMode::Chatgpt
             && (self.protocol != Protocol::Responses

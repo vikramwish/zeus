@@ -4,7 +4,7 @@ Zeus is an experimental local development runtime. Use only targets you are auth
 
 ## Explicit approvals
 
-Model access, verifier execution, and MCP program launch each require a separate CLI flag. Model text, repository instructions and tool responses cannot grant those permissions. Analyst workers receive no write, verifier-execution or MCP capabilities. The implementer edits only a private candidate through path-checked tools; the original source is not a working directory for generated code.
+Model access, verifier execution, and MCP program launch each require a separate CLI flag. Model text, repository instructions and tool responses cannot grant those permissions. Read-only analysts receive no write capabilities; coding workers receive write/edit only for their validated, disjoint exact file assignments. Neither worker type receives verifier-execution, MCP, shell, or recursive delegation capabilities. The integration implementer starts only after all workers join. All agent edits are confined to a private candidate through path-checked tools; the original source is not a working directory for generated code.
 
 ## Verifier
 
@@ -27,5 +27,7 @@ The protocol client clears inherited environment except PATH/HOME/TMPDIR, refuse
 Common secret filenames are excluded from snapshots. Hardcoded secrets in ordinary source files are not detected. Review target scope before allowing model access. Transcripts include selected source and model/tool content, and are stored inside a private state directory; never publish the runs directory.
 
 The state lock protects cooperative Zeus processes, not a hostile same-user process. Filesystem checks do not promise protection against concurrent malicious filesystem mutation. Do not run untrusted sibling processes against a candidate while Zeus edits it. Stale locks after abrupt termination require checking the owner before removal.
+
+Within a run, workspace mutation holds one mutex from expected-version checking through rename. Concurrent requests using the same old digest (or both claiming a new file) cannot both commit. Model calls and independent worker reasoning still run concurrently. Workers share a candidate, not isolated filesystem snapshots; cross-file reads are not a transactional snapshot. On worker failure, already-started siblings are joined and partial candidate edits are retained for inspection, not rolled back or promoted. No final verifier or integration agent starts on an infrastructure-failed worker batch.
 
 Keep policy state, verifier definitions and audit records outside the agent's writable candidate. A policy update demonstrates routing learning, not model improvement. Persisted evidence/report links must be reviewed before using a candidate in production.

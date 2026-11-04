@@ -47,6 +47,7 @@ pub struct ChatClient {
     model: String,
     api_key: Option<String>,
     protocol: Protocol,
+    request_budget: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
 }
 impl ChatClient {
     pub fn new(endpoint: &str, model: &str, api_key: Option<String>) -> Result<Self, String> {
@@ -120,7 +121,19 @@ impl ChatClient {
             model: model.into(),
             api_key,
             protocol,
+            request_budget: None,
         })
+    }
+    /// Install a run-wide attempted-request limit before cloning the client.
+    /// Clones share the remaining counter; failed requests are not refunded.
+    pub fn with_request_limit(mut self, limit: usize) -> Result<Self, String> {
+        if !(1..=1024).contains(&limit) {
+            return Err("autonomy.max_model_calls must be 1..1024".into());
+        }
+        self.request_budget = Some(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
+            limit,
+        )));
+        Ok(self)
     }
     pub fn complete(&self, messages: &[Value], tools: &[Value]) -> Result<Value, String> {
         // Bound the original transcript before creating provider-specific copies.
@@ -151,6 +164,14 @@ impl ChatClient {
             };
         }
         let body = bounded_json(&payload)?;
+        if let Some(budget) = &self.request_budget {
+            use std::sync::atomic::Ordering;
+            budget
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
+                    left.checked_sub(1)
+                })
+                .map_err(|_| "autonomy model-call budget exhausted")?;
+        }
         let response = request
             .set("Content-Type", "application/json")
             .send_bytes(&body)

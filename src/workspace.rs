@@ -4,6 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 const MAX_FILE: u64 = 16 * 1024 * 1024;
 const MAX_TOTAL: u64 = 64 * 1024 * 1024;
@@ -32,6 +33,9 @@ pub struct ReadResult {
 pub struct Workspace {
     pub root: PathBuf,
     pub inventory: Inventory,
+    // Serialize version validation through rename, not model calls or reads.
+    // Atomic rename alone permits two writers to accept the same old digest.
+    mutation: Mutex<()>,
 }
 
 pub fn digest(bytes: &[u8]) -> String {
@@ -246,7 +250,11 @@ impl Workspace {
             )
             .map_err(|e| e.to_string())?;
         }
-        Ok(Self { root, inventory })
+        Ok(Self {
+            root,
+            inventory,
+            mutation: Mutex::new(()),
+        })
     }
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
         if path.is_empty() || path.len() > 4096 {
@@ -286,6 +294,10 @@ impl Workspace {
         if content.len() > MAX_TEXT {
             return Err("text size limit exceeded".into());
         }
+        let _guard = self
+            .mutation
+            .lock()
+            .map_err(|_| "workspace mutation lock poisoned")?;
         let target = self.resolve(path)?;
         if target.exists() {
             let current = bounded_read(&target, MAX_TEXT as u64)?;
@@ -303,7 +315,7 @@ impl Workspace {
         };
         let parent = target.parent().ok_or("missing parent")?;
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        // Recheck after directory creation; only the coordinator writes during agent execution.
+        // Recheck after directory creation; all agent writes share the mutation lock.
         self.resolve(path)?;
         let temp = parent.join(format!(
             ".native-write-{}-{}",
@@ -329,6 +341,185 @@ impl Workspace {
         }
         result.map_err(|e| e.to_string())
     }
+    /// Literal, non-overlapping occurrences in current candidate text (not the snapshot
+    /// inventory). `truncated` means a search/result budget stopped traversal; skipped
+    /// files and shortened UTF-8 excerpts are reported separately. Source IDs use the
+    /// same path#sha256 convention as read_file. No filesystem mutation is performed.
+    pub fn search(&self, query: &str, max_results: usize) -> Result<serde_json::Value, String> {
+        const MAX_RESULTS: usize = 100;
+        const MAX_ENTRIES: usize = 10_000;
+        const MAX_EXCERPT: usize = 512;
+        if query.is_empty() || query.len() > 4096 {
+            return Err("query must contain 1..=4096 UTF-8 bytes".into());
+        }
+        if !(1..=MAX_RESULTS).contains(&max_results) {
+            return Err("max_results must be in 1..=100".into());
+        }
+        let mut matches = Vec::new();
+        let mut skipped = Vec::new();
+        let mut truncation_reason = None;
+        let mut pending = std::collections::BTreeSet::from([String::new()]);
+        let mut entries = 0;
+        let mut files = 0;
+        let mut bytes = 0u64;
+        'paths: while let Some(path) = pending.pop_first() {
+            if skipped.len() == MAX_RESULTS {
+                truncation_reason = Some("diagnostic limit");
+                break;
+            }
+            let target = if path.is_empty() {
+                self.root.clone()
+            } else {
+                match self.resolve(&path) {
+                    Ok(target) => target,
+                    Err(reason) => {
+                        skipped.push(serde_json::json!({"path": path, "reason": reason}));
+                        continue;
+                    }
+                }
+            };
+            let meta = fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
+            if meta.is_dir() {
+                // Bound enumeration before collecting/sorting; empty directories also
+                // consume budget. An oversized directory is not partially searched.
+                let children = fs::read_dir(&target)
+                    .map_err(|e| e.to_string())?
+                    .take(MAX_ENTRIES - entries + 1)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())?;
+                entries += children.len();
+                if entries > MAX_ENTRIES {
+                    truncation_reason = Some("directory entry limit");
+                    break;
+                }
+                for child in children {
+                    let name = child
+                        .file_name()
+                        .into_string()
+                        .map_err(|_| "non-UTF8 path")?;
+                    pending.insert(if path.is_empty() {
+                        name
+                    } else {
+                        format!("{path}/{name}")
+                    });
+                }
+                continue;
+            }
+            if !meta.is_file() || meta.file_type().is_symlink() {
+                skipped.push(serde_json::json!({"path": path, "reason": "regular files only"}));
+                continue;
+            }
+            if files == MAX_FILES || bytes + MAX_TEXT as u64 > MAX_TOTAL {
+                truncation_reason = Some("file or byte limit");
+                break;
+            }
+            files += 1;
+            if meta.len() > MAX_TEXT as u64 {
+                skipped.push(serde_json::json!({"path": path, "reason": "file exceeds 131072 byte text limit"}));
+                continue;
+            }
+            let text = match self.read(&path) {
+                Ok(text) => text,
+                Err(reason) => {
+                    // A failed bounded read may still have consumed its full allowance.
+                    bytes += MAX_TEXT as u64;
+                    skipped.push(serde_json::json!({"path": path, "reason": reason}));
+                    continue;
+                }
+            };
+            bytes += text.content.len() as u64;
+            for (offset, _) in text.content.match_indices(query) {
+                if matches.len() == max_results {
+                    truncation_reason = Some("result limit");
+                    break 'paths;
+                }
+                let line = text.content[..offset]
+                    .bytes()
+                    .filter(|b| *b == b'\n')
+                    .count()
+                    + 1;
+                let line_start = text.content[..offset].rfind('\n').map_or(0, |i| i + 1);
+                let line_end = text.content[offset..]
+                    .find('\n')
+                    .map_or(text.content.len(), |i| offset + i);
+                // Center long-line excerpts near the match rather than silently hiding it.
+                let mut start = line_start.max(offset.saturating_sub(MAX_EXCERPT / 4));
+                while !text.content.is_char_boundary(start) {
+                    start += 1;
+                }
+                let mut end = line_end.min(start + MAX_EXCERPT);
+                while !text.content.is_char_boundary(end) {
+                    end -= 1;
+                }
+                matches.push(serde_json::json!({
+                    "path": path, "line": line, "byte_offset": offset,
+                    "content": &text.content[start..end],
+                    "content_truncated": start != line_start || end != line_end || offset + query.len() > end,
+                    "sha256": text.sha256,
+                    "source_id": format!("{}#{}", path, text.sha256),
+                }));
+            }
+        }
+        // Account for JSON escaping and long paths, not just excerpt bytes. Reserve
+        // space for the envelope; preserve a prefix of each bounded result array.
+        let mut output_bytes = 1024;
+        for items in [&mut matches, &mut skipped] {
+            let mut keep = 0;
+            for item in items.iter() {
+                let size = item.to_string().len() + 1;
+                if output_bytes + size > MAX_TEXT {
+                    truncation_reason = Some("output byte limit");
+                    break;
+                }
+                output_bytes += size;
+                keep += 1;
+            }
+            items.truncate(keep);
+        }
+        Ok(serde_json::json!({
+            "matches": matches, "skipped": skipped,
+            "truncated": truncation_reason.is_some(), "truncation_reason": truncation_reason,
+        }))
+    }
+
+    /// Replace one exact literal in an existing text file, bound to its current digest.
+    pub fn edit(
+        &self,
+        path: &str,
+        old_string: &str,
+        new_string: &str,
+        expected_sha256: &str,
+    ) -> Result<(), String> {
+        if old_string.is_empty() {
+            return Err("old_string must not be empty".into());
+        }
+        if new_string.contains('\0') {
+            return Err("replacement must be text without NUL bytes".into());
+        }
+        let current = self.read(path)?;
+        if current.sha256 != expected_sha256 {
+            return Err("stale or missing expected_sha256".into());
+        }
+        let start = current
+            .content
+            .find(old_string)
+            .ok_or("old_string not found")?;
+        // Advance one character, not the match length: overlapping occurrences
+        // (for example "aa" in "aaa") are ambiguous too.
+        let next = start + current.content[start..].chars().next().unwrap().len_utf8();
+        if current.content[next..].contains(old_string) {
+            return Err("old_string is ambiguous".into());
+        }
+        // Enforce write's bound before allocating the replacement buffer.
+        if new_string.len() > MAX_TEXT - (current.content.len() - old_string.len()) {
+            return Err("text size limit exceeded".into());
+        }
+        let content = current.content.replacen(old_string, new_string, 1);
+        // write rechecks this digest under the mutation lock, so an intervening
+        // edit cannot be silently overwritten by this optimistic read.
+        self.write(path, &content, Some(expected_sha256))
+    }
+
     pub fn list(&self) -> Result<Inventory, String> {
         inspect(&self.root)
     }

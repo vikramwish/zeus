@@ -10,21 +10,24 @@ Independent Rust runtime, not a wrapper around Hermes/Codex/Prime. No claim of f
 
 ## Behavior and ownership
 
-Job JSON -> config validation -> exclusive state lock -> immutable source inventory -> disposable candidate copy -> model-planned independent analysis questions -> up to three read-only worker loops -> one writing implementer -> user-supplied external verifier -> bounded repair -> evidence/report -> routing update.
+Job JSON -> config validation -> exclusive state lock -> immutable source inventory -> disposable candidate copy -> model-planned independent tasks with validated file ownership -> up to three scoped coding/read-only worker loops -> joined results -> one integration implementer -> user-supplied external verifier -> bounded repair -> evidence/report -> routing update.
 
 - model.rs: validated HTTP endpoint, bounded JSON/SSE responses, and explicit Chat Completions/Responses/Anthropic transcript adapters. No credential discovery or automatic provider fallback.
 - auth.rs: native ChatGPT public-client OAuth, validated account identity/scopes, protected local token storage, refresh rotation, and account-specific model discovery. Subscription credentials never enter jobs or audits; config/runtime pin them to the official Responses endpoint. The small direct dependencies `ring`, `base64`, and `url` reuse packages already present in the HTTP dependency graph rather than implementing crypto or URL codecs.
 - agent.rs: model/tool loop and bounded parallel workers; ToolHost trait is the actual capability boundary.
 - mcp.rs: stdio JSON-RPC lifecycle, discovery, allowlisted tool calls, limits and cleanup. Explicit host-execution approval required.
 - policy.rs: persisted contextual UCB routing among direct and parallel analysis. Only verified candidate outcomes update it; infrastructure failures do not. This is bandit learning, not LLM-weight training.
-- workspace.rs: private snapshot, bounded text/file inspection, traversal/symlink/secret guards and exact edits. Original target never written.
+- workspace.rs: private snapshot, bounded text/file inspection, traversal/symlink/secret guards and exact edits. A mutation mutex covers expected-digest validation through atomic rename, including new-file creation; optimistic literal edits revalidate under that lock. Original target never written.
+- context.rs: bounded root project guidance and workspace-only skill discovery/read, using existing workspace path guards. Repository content is inert guidance, not approval. runtime.rs injects root guidance and registers skill/search evidence IDs.
+- output.rs: pure model-facing presentation reduction for recognized successful libtest output, applied only after raw audit persistence. It cannot change verification decisions or raw reports.
+- session.rs: read-only retained-run listing/search/show over existing audit/report files; no second database or transcript replay. main.rs owns the independent-task console and reuses the one-shot approval/status path.
 - process.rs: fixed user-provided verifier argv, cleaned environment, time/output/resource bounds, process-group cleanup. macOS sandbox denies network and writes outside candidate. Unsupported platforms fail closed.
 - main.rs: CLI approvals, authentication UI entry points and the internal verifier exec helper.
-- runtime.rs: job orchestration, audit ledger, reports and routing updates. Single writer and state lock prevent conflicting runs; the native launch handshake and resource outcomes keep infrastructure failures out of rewards.
+- runtime.rs: job orchestration, audit ledger, reports and routing updates. Validated disjoint file ownership bounds coding workers; all workers join before integration or verification. The state lock prevents conflicting runs; the native launch handshake and resource outcomes keep infrastructure failures out of rewards. User-selected direct/parallel strategy overrides learned selection, never approvals.
 
 ## Trust boundaries
 
-Artifact text, model outputs, and MCP responses are untrusted data, never approval. Model cannot edit verifier specification, policy state or audit history. Child analysts cannot write or execute commands. Verifier argv comes only from the user's job file; a passing process alone does not establish universal equivalence. Immutable verifier must be external to candidate and bind to candidate through its working directory. Test bodies embedded in writable candidate are not trustworthy rewards. Unknown target execution is off by default. MCP servers are executable host integrations, not a sandbox; approval is explicit and separate from model-network permission.
+Artifact text, model outputs, and MCP responses are untrusted data, never approval. Model cannot edit verifier specification, policy state or audit history. Read-only analysts cannot write; coding workers may write only assigned candidate files. Neither receives command execution, verifier, MCP, or recursive delegation capabilities. Verifier argv comes only from the user's job file; a passing process alone does not establish universal equivalence. Immutable verifier must be external to candidate and bind to candidate through its working directory. Test bodies embedded in writable candidate are not trustworthy rewards. Unknown target execution is off by default. MCP servers are executable host integrations, not a sandbox; approval is explicit and separate from model-network permission.
 
 ## Initial acceptance and explicit limits
 
