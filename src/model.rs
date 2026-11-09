@@ -48,6 +48,95 @@ pub struct ChatClient {
     api_key: Option<String>,
     protocol: Protocol,
     request_budget: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+    timeout_seconds: u64,
+    retries: usize,
+}
+
+pub(crate) const DEFAULT_RETRIES: usize = 3;
+const MAX_RETRIES: usize = 8;
+const RETRY_AFTER_CAP: std::time::Duration = std::time::Duration::from_secs(30);
+const ERROR_BODY_LIMIT: usize = 2048;
+
+pub(crate) fn validate_retries(retries: usize) -> Result<(), String> {
+    if retries > MAX_RETRIES {
+        return Err("model_retries must be 0..8".into());
+    }
+    Ok(())
+}
+
+/// One failed attempt. `retry_after` is Some only for transient failures
+/// (408/429/5xx, DNS, connection failures, resets); deadlines and 4xx are final.
+struct Failure {
+    message: String,
+    retry_after: Option<std::time::Duration>,
+}
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            retry_after: None,
+        }
+    }
+}
+impl From<&str> for Failure {
+    fn from(message: &str) -> Self {
+        Self::from(message.to_string())
+    }
+}
+
+fn backoff(attempt: usize) -> std::time::Duration {
+    std::time::Duration::from_secs(1u64 << attempt.saturating_sub(1).min(3))
+}
+
+/// Structured provider error detail for the audit: only `error.code`,
+/// `error.type` and `error.message` (or a plain `error` string) from a JSON
+/// body, with URLs and token-like strings scrubbed. Raw bodies are never
+/// surfaced, since proxies and providers may echo credentials or signed URLs.
+fn error_detail(response: ureq::Response) -> Option<String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    response
+        .into_reader()
+        .take(ERROR_BODY_LIMIT as u64)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let body: Value = serde_json::from_slice(&bytes).ok()?;
+    let error = body.get("error")?;
+    let fields: Vec<String> = match error {
+        Value::String(s) => vec![scrub(s)],
+        Value::Object(map) => ["code", "type", "message"]
+            .iter()
+            .filter_map(|k| {
+                map.get(*k)
+                    .and_then(Value::as_str)
+                    .map(|v| format!("{k}={}", scrub(v)))
+            })
+            .collect(),
+        _ => return None,
+    };
+    let detail = fields.join(" ");
+    (!detail.is_empty()).then(|| detail.chars().take(512).collect())
+}
+
+fn scrub(text: &str) -> String {
+    text.split_whitespace()
+        .map(|word| {
+            if word.contains("://") {
+                "[url]"
+            } else if word.len() >= 20
+                && word.bytes().any(|b| b.is_ascii_digit())
+                && word.bytes().any(|b| b.is_ascii_alphabetic())
+                && word
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+            {
+                "[redacted]"
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 impl ChatClient {
     pub fn new(endpoint: &str, model: &str, api_key: Option<String>) -> Result<Self, String> {
@@ -122,7 +211,17 @@ impl ChatClient {
             api_key,
             protocol,
             request_budget: None,
+            timeout_seconds,
+            // The raw client never retries; the job opts in via with_retries.
+            retries: 0,
         })
+    }
+    /// Bounded retries for transient failures only; each attempt is one
+    /// request against the shared call budget. Zero disables retrying.
+    pub fn with_retries(mut self, retries: usize) -> Result<Self, String> {
+        validate_retries(retries)?;
+        self.retries = retries;
+        Ok(self)
     }
     /// Install a run-wide attempted-request limit before cloning the client.
     /// Clones share the remaining counter; failed requests are not refunded.
@@ -164,16 +263,41 @@ impl ChatClient {
             };
         }
         let body = bounded_json(&payload)?;
-        if let Some(budget) = &self.request_budget {
-            use std::sync::atomic::Ordering;
-            budget
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
-                    left.checked_sub(1)
-                })
-                .map_err(|_| "autonomy model-call budget exhausted")?;
-        }
         let protocol = self.protocol;
-        interruptible(move || exchange(request, &body, protocol))
+        let budget = self.request_budget.clone();
+        let (retries, timeout_seconds) = (self.retries, self.timeout_seconds);
+        interruptible(move || {
+            let mut attempt = 0;
+            loop {
+                attempt += 1;
+                crate::cancel::check()?;
+                if let Some(budget) = &budget {
+                    use std::sync::atomic::Ordering;
+                    budget
+                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
+                            left.checked_sub(1)
+                        })
+                        .map_err(|_| "autonomy model-call budget exhausted")?;
+                }
+                let failure = match exchange(request.clone(), &body, protocol, timeout_seconds) {
+                    Ok(message) => return Ok(message),
+                    Err(failure) => failure,
+                };
+                match failure.retry_after {
+                    Some(delay) if attempt <= retries => {
+                        let until = std::time::Instant::now() + delay;
+                        while std::time::Instant::now() < until {
+                            crate::cancel::check()?;
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                    }
+                    _ if attempt > 1 => {
+                        return Err(format!("{} (after {attempt} attempts)", failure.message))
+                    }
+                    _ => return Err(failure.message),
+                }
+            }
+        })
     }
 }
 
@@ -204,14 +328,66 @@ fn interruptible(
     }
 }
 
-fn exchange(request: ureq::Request, body: &[u8], protocol: Protocol) -> Result<Value, String> {
+fn exchange(
+    request: ureq::Request,
+    body: &[u8],
+    protocol: Protocol,
+    timeout_seconds: u64,
+) -> Result<Value, Failure> {
     let response = request
         .set("Content-Type", "application/json")
         .send_bytes(body)
         .map_err(|error| match error {
-            ureq::Error::Status(status, _) => format!("model request failed: HTTP {status}"),
+            ureq::Error::Status(status, response) => {
+                let retry_after = matches!(status, 408 | 429 | 500 | 502 | 503 | 504).then(|| {
+                    response
+                        .header("Retry-After")
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                        .map(std::time::Duration::from_secs)
+                        .map(|d| d.min(RETRY_AFTER_CAP))
+                        .unwrap_or_else(|| backoff(1))
+                });
+                let message = match error_detail(response) {
+                    Some(detail) => format!("model request failed: HTTP {status}: {detail}"),
+                    None => format!("model request failed: HTTP {status}"),
+                };
+                Failure {
+                    message,
+                    retry_after,
+                }
+            }
             ureq::Error::Transport(error) => {
-                format!("model request failed: {:?}", error.kind())
+                use std::error::Error;
+                let io_kind = error
+                    .source()
+                    .and_then(|s| s.downcast_ref::<std::io::Error>())
+                    .map(std::io::Error::kind);
+                let detail = error.message().unwrap_or("").to_ascii_lowercase();
+                let timed_out = matches!(
+                    io_kind,
+                    Some(std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock)
+                ) || detail.contains("timed out")
+                    || detail.contains("timeout");
+                if timed_out {
+                    return Failure::from(format!(
+                        "model request timed out after {timeout_seconds}s"
+                    ));
+                }
+                let transient = matches!(
+                    error.kind(),
+                    ureq::ErrorKind::Dns | ureq::ErrorKind::ConnectionFailed | ureq::ErrorKind::Io
+                );
+                Failure {
+                    message: format!(
+                        "model request failed: {}{}",
+                        error.kind(),
+                        error
+                            .message()
+                            .map(|m| format!(": {m}"))
+                            .unwrap_or_default()
+                    ),
+                    retry_after: transient.then(|| backoff(1)),
+                }
             }
         })?;
     if response.status() != 200 {
@@ -228,23 +404,24 @@ fn exchange(request: ureq::Request, body: &[u8], protocol: Protocol) -> Result<V
         }) {
             return Err("expected Responses event stream".into());
         }
-        return responses_stream(response.into_reader());
+        return responses_stream(response.into_reader()).map_err(Failure::from);
     }
     let mut bytes = Vec::new();
     response
         .into_reader()
         .take((RESPONSE_LIMIT + 1) as u64)
         .read_to_end(&mut bytes)
-        .map_err(|_| "failed to read model response".to_string())?;
+        .map_err(|_| Failure::from("failed to read model response"))?;
     if bytes.len() > RESPONSE_LIMIT {
         return Err("model response exceeds 2 MiB limit".into());
     }
     let body: Value =
-        serde_json::from_slice(&bytes).map_err(|_| "invalid model JSON".to_string())?;
+        serde_json::from_slice(&bytes).map_err(|_| Failure::from("invalid model JSON"))?;
     match protocol {
         Protocol::Anthropic => anthropic_output(&body),
         _ => chat_message(&body),
     }
+    .map_err(Failure::from)
 }
 
 fn chat_message(body: &Value) -> Result<Value, String> {

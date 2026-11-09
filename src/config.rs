@@ -104,6 +104,9 @@ pub struct Job {
     pub max_turns: usize,
     #[serde(default = "model_timeout")]
     pub model_timeout: u64,
+    /// Retries for transient model failures (408/429/5xx, connection errors).
+    #[serde(default = "model_retries")]
+    pub model_retries: usize,
     #[serde(default)]
     pub verifier: Vec<String>,
     #[serde(default = "timeout")]
@@ -123,6 +126,9 @@ fn timeout() -> u64 {
 fn model_timeout() -> u64 {
     crate::model::DEFAULT_MODEL_TIMEOUT
 }
+fn model_retries() -> usize {
+    crate::model::DEFAULT_RETRIES
+}
 #[derive(Clone, Copy, Default)]
 pub struct Approvals {
     pub network: bool,
@@ -136,6 +142,7 @@ impl Job {
             return Err("scoped autonomy cannot expose unsandboxed MCP tools; remove MCP or explicitly use unrestricted candidate file scope".into());
         }
         crate::model::validate_model_timeout(self.model_timeout)?;
+        crate::model::validate_retries(self.model_retries)?;
         if self.auth == AuthMode::Chatgpt
             && (self.protocol != Protocol::Responses
                 || self.endpoint != "https://api.openai.com/v1/responses"

@@ -115,7 +115,7 @@ fn delayed_response(timeout: u64, expect_response: bool, trickle: bool) {
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
         assert!(
-            error.contains("model request failed")
+            error.contains("model request timed out after 1s")
                 || error.contains("failed to read model response"),
             "{error}"
         );

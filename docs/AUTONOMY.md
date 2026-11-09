@@ -37,7 +37,8 @@ source, state directory, model endpoint and model fields are still required.
 - `max_model_calls`: optional 1–1024 attempted inference requests shared across
   the planner, all workers, integration and repairs. Cloned clients share an
   atomic budget. Concurrent workers cannot each spend the full budget. Failed
-  requests consume an admitted slot; there is no automatic refund or retry.
+  requests consume an admitted slot, including each transient-failure retry
+  governed by `model_retries`; there is no automatic refund.
   Omission preserves existing per-agent bounds without an additional global cap.
 - Existing `max_turns` and `model_timeout` still bound individual agent loops and
   model requests. The model-call cap is not a token/dollar cap or a whole-job
