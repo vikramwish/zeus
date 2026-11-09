@@ -10,6 +10,10 @@ pub trait ToolHost: Send + Sync {
     fn observe(&self, _kind: &str, _data: Value) -> Result<(), String> {
         Ok(())
     }
+    /// Transcript size past which the oldest tool results are elided.
+    fn compaction_threshold(&self) -> usize {
+        DEFAULT_COMPACTION_THRESHOLD
+    }
 }
 #[derive(Clone, Serialize, Debug)]
 pub struct AgentResult {
@@ -22,6 +26,61 @@ const MAX_TOOL_CALLS: usize = 64;
 const MAX_CONTEXT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOOL_RESULT_BYTES: usize = 256 * 1024;
 const MAX_CONSECUTIVE_TRUNCATIONS: usize = 1;
+pub const DEFAULT_COMPACTION_THRESHOLD: usize = 1024 * 1024;
+pub const MIN_COMPACTION_THRESHOLD: usize = 64 * 1024;
+/// Recent tool results that compaction never touches (Hermes protect_last_n).
+const PROTECT_LAST_TOOL_RESULTS: usize = 4;
+
+pub fn validate_compaction_threshold(bytes: usize) -> Result<(), String> {
+    if !(MIN_COMPACTION_THRESHOLD..=MAX_CONTEXT_BYTES).contains(&bytes) {
+        return Err("compaction_threshold_bytes must be 65536..4194304".into());
+    }
+    Ok(())
+}
+
+fn is_elided(message: &Value) -> bool {
+    message["content"]
+        .as_str()
+        .is_some_and(|c| c.starts_with("{\"elided\":true"))
+}
+
+/// Replace the oldest unprotected tool results with a short placeholder so the
+/// transcript fits. Tool call/result pairs stay intact; the model can re-run a
+/// tool if it needs the data again. Returns how many results were elided.
+fn compact(messages: &mut [Value], bytes: &mut usize, keep_last: usize) -> Result<usize, String> {
+    let candidates: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| m["role"] == "tool" && !is_elided(m))
+        .map(|(i, _)| i)
+        .collect();
+    if candidates.len() <= keep_last {
+        return Ok(0);
+    }
+    let elide = &candidates[..candidates.len() - keep_last];
+    for &index in elide {
+        let omitted = messages[index]["content"].as_str().map_or(0, str::len);
+        let placeholder = serde_json::json!({"elided":true,"omitted_bytes":omitted,"note":"earlier tool result removed to fit the context window; call the tool again if its content is needed"});
+        messages[index] = serde_json::json!({"role":"tool","tool_call_id":messages[index]["tool_call_id"],"content":placeholder.to_string()});
+    }
+    *bytes = 2;
+    for message in messages.iter() {
+        *bytes += serde_json::to_vec(message)
+            .map_err(|_| "invalid context JSON")?
+            .len()
+            + 1;
+    }
+    Ok(elide.len())
+}
+
+/// Provider rejections that mean the transcript itself is too large.
+fn is_context_overflow(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    e.contains("context_length_exceeded")
+        || e.contains("context window exceeded")
+        || e.contains("maximum context length")
+        || e.contains("prompt is too long")
+}
 
 fn push_message(
     messages: &mut Vec<Value>,
@@ -203,11 +262,33 @@ pub fn run(
     let mut consecutive_truncations = 0;
     for turn in 1..=max_turns {
         crate::cancel::check()?;
+        if context_bytes > host.compaction_threshold() {
+            let elided = compact(&mut messages, &mut context_bytes, PROTECT_LAST_TOOL_RESULTS)?;
+            if elided > 0 {
+                host.observe("compaction", json!({"turn":turn,"reason":"threshold","elided":elided,"bytes_after":context_bytes}))?;
+            }
+        }
         // A signal during a blocking request surfaces as a transport error;
         // report the cancellation, not the interrupted read.
-        let message = client
-            .complete(&messages, &tools)
-            .map_err(|e| crate::cancel::check().err().unwrap_or(e))?;
+        let message = match client.complete(&messages, &tools) {
+            Ok(message) => message,
+            Err(error) => {
+                crate::cancel::check()?;
+                // One compact-and-retry when the provider says the transcript
+                // is too large; keep only the most recent tool result.
+                if !is_context_overflow(&error) {
+                    return Err(error);
+                }
+                let elided = compact(&mut messages, &mut context_bytes, 1)?;
+                if elided == 0 {
+                    return Err(error);
+                }
+                host.observe("compaction", json!({"turn":turn,"reason":"provider_overflow","elided":elided,"bytes_after":context_bytes,"error":error}))?;
+                client
+                    .complete(&messages, &tools)
+                    .map_err(|e| crate::cancel::check().err().unwrap_or(e))?
+            }
+        };
         host.observe("model_turn", json!({"turn":turn,"message":message}))?;
         if message.get(crate::model::TRUNCATED) == Some(&Value::Bool(true)) {
             consecutive_truncations += 1;

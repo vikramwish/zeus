@@ -110,6 +110,9 @@ pub struct Job {
     /// Output token ceiling sent where the protocol requires one (Anthropic).
     #[serde(default = "max_output_tokens")]
     pub max_output_tokens: u32,
+    /// Transcript bytes past which the oldest tool results are elided.
+    #[serde(default = "compaction_threshold_bytes")]
+    pub compaction_threshold_bytes: usize,
     #[serde(default)]
     pub verifier: Vec<String>,
     #[serde(default = "timeout")]
@@ -135,6 +138,9 @@ fn model_retries() -> usize {
 fn max_output_tokens() -> u32 {
     crate::model::DEFAULT_MAX_OUTPUT_TOKENS
 }
+fn compaction_threshold_bytes() -> usize {
+    crate::agent::DEFAULT_COMPACTION_THRESHOLD
+}
 #[derive(Clone, Copy, Default)]
 pub struct Approvals {
     pub network: bool,
@@ -150,6 +156,7 @@ impl Job {
         crate::model::validate_model_timeout(self.model_timeout)?;
         crate::model::validate_retries(self.model_retries)?;
         crate::model::validate_max_output_tokens(self.max_output_tokens)?;
+        crate::agent::validate_compaction_threshold(self.compaction_threshold_bytes)?;
         if self.auth == AuthMode::Chatgpt
             && (self.protocol != Protocol::Responses
                 || self.endpoint != "https://api.openai.com/v1/responses"

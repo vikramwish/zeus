@@ -117,6 +117,7 @@ impl Audit {
 }
 struct Shared {
     workspace: Workspace,
+    compaction_threshold: usize,
     user_write_paths: Option<Vec<String>>,
     audit: Audit,
     findings: Mutex<Vec<Finding>>,
@@ -353,6 +354,9 @@ impl Host {
     }
 }
 impl ToolHost for Host {
+    fn compaction_threshold(&self) -> usize {
+        self.shared.compaction_threshold
+    }
     fn observe(&self, kind: &str, data: Value) -> Result<(), String> {
         let mut data = data;
         if let Some(obj) = data.as_object_mut() {
@@ -675,6 +679,7 @@ fn run_inner(
     }
     let shared = Arc::new(Shared {
         workspace,
+        compaction_threshold: job.compaction_threshold_bytes,
         user_write_paths: job.autonomy.write_paths.clone(),
         audit,
         findings: Mutex::new(vec![]),
@@ -1019,6 +1024,7 @@ for line in sys.stdin:
             let host = Host {
                 shared: Arc::new(Shared {
                     workspace: Workspace::snapshot(&source, &dir.path().join("candidate")).unwrap(),
+                    compaction_threshold: agent::DEFAULT_COMPACTION_THRESHOLD,
                     user_write_paths: None,
                     audit: Audit::new(&dir.path().join("events.jsonl")).unwrap(),
                     findings: Mutex::new(vec![]),
