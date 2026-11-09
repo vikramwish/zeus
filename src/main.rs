@@ -3,7 +3,7 @@ use std::path::Path;
 // Only the host process launcher invokes this path, after sandbox-exec has
 // installed Seatbelt. It is not an agent tool or an alternate job/approval path.
 // A private inherited channel distinguishes kernel exec errors from test exits.
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn verifier_exec(fd: &str, argv: &[String]) -> Result<(), String> {
     use std::{ffi::CString, io::Write, os::fd::FromRawFd};
     let fd: i32 = fd.parse().map_err(|_| "invalid launch descriptor")?;
@@ -218,7 +218,7 @@ fn execute() -> Result<(), String> {
             let store = zeus::auth::AuthStore::new().map_err(|e| e.to_string())?;
             print_json(&zeus::auth::list_models(&store).map_err(|e| e.to_string())?)
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(unix)]
         [command, fd, argv @ ..] if command == "--internal-verifier-exec" => {
             verifier_exec(fd, argv)
         }

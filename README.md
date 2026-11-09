@@ -62,7 +62,7 @@ Concurrency never grants authority. Coding workers cannot run the verifier, call
 
 ## Get started
 
-Build locally, inspect a target without inference, then configure a job and explicitly approve the capabilities it needs. The current verifier sandbox requires macOS.
+Build locally, inspect a target without inference, then configure a job and explicitly approve the capabilities it needs. The verifier sandbox uses Seatbelt on macOS and bubblewrap (`bwrap`) on Linux; other hosts, and Linux without bubblewrap, refuse to run a verifier rather than run it unsandboxed. The Linux backend is implemented and its command line is unit-tested, but it has not yet been exercised end to end on a Linux host.
 
 ```sh
 cargo build --release
@@ -115,7 +115,7 @@ The details below distinguish implemented behavior from the larger ambition.
 
 ## Build and test
 
-Requirements: Rust/Cargo and macOS for the current verifier sandbox. The test fixture also uses Python 3; the end-to-end test currently expects Homebrew Python at `/opt/homebrew/bin/python3`.
+Requirements: Rust/Cargo, plus macOS or Linux with bubblewrap for the verifier sandbox. The test fixture also uses Python 3; the end-to-end test currently expects Homebrew Python at `/opt/homebrew/bin/python3`.
 
 ```sh
 cargo build --release
@@ -132,7 +132,7 @@ The executable is `target/release/zeus`. Tests include clearly labelled determin
 ./target/release/zeus inspect /absolute/path/to/artifact-or-repository
 ```
 
-This reports file hashes, format candidates and skipped entries without running the target or contacting a model. Current inventory bounds: 2,000 files, 16 MiB per file, 64 MiB total. Select a focused target for larger applications. Common secret filenames and dependency/build directories are excluded; this is not general secret detection.
+This reports file hashes, format candidates and skipped entries without running the target or contacting a model. Current inventory bounds: 2,000 files, 16 MiB per file, 64 MiB total. Select a focused target for larger applications. Common credential filenames (env files, key material, .netrc/.npmrc/.pypirc, cloud and container configs, keystores, Terraform state) and dependency/build directories are excluded. Text files containing well-known key shapes (private key blocks, `sk-` keys, AWS, GitHub, Slack and Google tokens) are copied into the candidate for the verifier but reported as `secret-like-text` and never shown to the model by `read_file` or `search_files`. This is a guard against common leaks, not a secret scanner.
 
 ## Run a task
 
@@ -150,7 +150,7 @@ Verifier argv must name either one absolute external executable or an absolute i
 Permissions are separate:
 
 - `--allow-network`: send task/source/tool evidence to the exact configured model endpoint. HTTPS is required except for loopback HTTP; redirects and environment proxies are disabled.
-- `--allow-exec`: run the fixed user-selected verifier in the macOS sandbox. The model cannot select arbitrary commands.
+- `--allow-exec`: run the fixed user-selected verifier in the host sandbox (Seatbelt on macOS, bubblewrap on Linux). The model cannot select arbitrary commands.
 - `--allow-mcp`: launch the configured MCP programs on the host and expose only allowlisted tools. This is an approval for executable host integrations, **not** a sandbox. Approve only trusted servers and tool operations.
 
 Well-formed tool batches containing an unadvertised capability execute no calls: Zeus returns a denial for that call and a skipped result for the rest of the batch. The model can correct its request with fresh call IDs within the existing turn, call and context budgets. Denied attempts consume those budgets; calls are never automatically replayed. `AgentResult.tool_calls` counts validated attempts, including denied/skipped calls, not dispatched operations. Malformed calls, duplicate IDs and infrastructure/host failures remain fatal. Read-only analysts never gain write or execution access through recovery.

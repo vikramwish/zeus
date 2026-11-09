@@ -59,10 +59,66 @@ fn excluded(name: &str) -> bool {
             | "credentials.json"
             | "id_rsa"
             | "id_ed25519"
+            | "id_ecdsa"
+            | "id_dsa"
+            | ".netrc"
+            | ".npmrc"
+            | ".pypirc"
+            | ".git-credentials"
+            | ".docker"
+            | ".kube"
+            | ".gnupg"
+            | ".terraform"
     ) || name == ".env"
         || name.starts_with(".env.")
         || name.ends_with(".pem")
         || name.ends_with(".key")
+        || name.ends_with(".p12")
+        || name.ends_with(".pfx")
+        || name.ends_with(".jks")
+        || name.ends_with(".keystore")
+        || name.ends_with(".tfstate")
+        || name.ends_with(".tfstate.backup")
+}
+
+/// Conservative content check for credentials in ordinary text files. Matches
+/// well-known key shapes only; it is a guard against the common leak, not a
+/// secret scanner. Returns the matched kind, never the matched value.
+pub fn secret_like(text: &str) -> Option<&'static str> {
+    fn run_len(bytes: &[u8], allowed: fn(u8) -> bool) -> usize {
+        bytes.iter().take_while(|b| allowed(**b)).count()
+    }
+    fn token(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
+    }
+    if text.contains("PRIVATE KEY-----") {
+        return Some("private key block");
+    }
+    let bytes = text.as_bytes();
+    for (index, window) in bytes.windows(4).enumerate() {
+        let rest = &bytes[index + 4..];
+        let kind = match window {
+            b"sk-a" | b"sk-p" | b"sk-o" | b"sk-l" => {
+                (run_len(rest, token) >= 20).then_some("sk- API key")
+            }
+            b"AKIA" | b"ASIA" => (run_len(rest, |b| b.is_ascii_uppercase() || b.is_ascii_digit())
+                == 16
+                && rest.get(16).is_none_or(|b| !token(*b)))
+            .then_some("AWS access key id"),
+            b"ghp_" | b"gho_" | b"ghu_" | b"ghs_" | b"ghr_" => {
+                (run_len(rest, |b| b.is_ascii_alphanumeric()) >= 36).then_some("GitHub token")
+            }
+            b"xoxb" | b"xoxp" | b"xoxa" | b"xoxr" | b"xoxs" => (rest.first() == Some(&b'-')
+                && run_len(&rest[1..], token) >= 20)
+                .then_some("Slack token"),
+            b"AIza" => (run_len(rest, token) >= 35).then_some("Google API key"),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            return Some(kind);
+        }
+    }
+    None
 }
 fn kind(bytes: &[u8], path: &Path) -> String {
     if bytes.starts_with(b"\x7fELF") {
@@ -92,8 +148,15 @@ fn kind(bytes: &[u8], path: &Path) -> String {
         "packet-capture"
     } else if path.extension().is_some_and(|x| x == "asar") {
         "asar-candidate"
-    } else if std::str::from_utf8(bytes).is_ok() && !bytes.contains(&0) {
-        "text"
+    } else if let Some(text) = std::str::from_utf8(bytes)
+        .ok()
+        .filter(|_| !bytes.contains(&0))
+    {
+        if secret_like(text).is_some() {
+            "secret-like-text"
+        } else {
+            "text"
+        }
     } else {
         "binary-unknown"
     }
@@ -287,6 +350,11 @@ impl Workspace {
             .map_err(|_| "binary file: use artifact analysis tools".to_string())?;
         if content.contains('\0') {
             return Err("binary file: use artifact analysis tools".into());
+        }
+        if let Some(kind) = secret_like(&content) {
+            return Err(format!(
+                "file contains secret-like content ({kind}); it stays in the candidate but is not shown to the model"
+            ));
         }
         Ok(ReadResult { content, sha256 })
     }

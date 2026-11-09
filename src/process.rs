@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::path::Path;
-#[cfg(target_os = "macos")]
 use std::{
     fs,
     io::Read,
@@ -13,6 +12,71 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Verifier isolation backends, selected by host OS and never by the job.
+enum Backend {
+    /// macOS `sandbox-exec` with a deny-default Seatbelt profile.
+    Seatbelt,
+    /// Linux bubblewrap: unshared namespaces, read-only system binds, writable candidate.
+    Bubblewrap(PathBuf),
+}
+
+fn select_backend() -> Result<Backend, String> {
+    if cfg!(target_os = "macos") {
+        return Ok(Backend::Seatbelt);
+    }
+    if cfg!(target_os = "linux") {
+        for candidate in ["/usr/bin/bwrap", "/usr/local/bin/bwrap", "/bin/bwrap"] {
+            if Path::new(candidate).is_file() {
+                return Ok(Backend::Bubblewrap(candidate.into()));
+            }
+        }
+        return Err("sandbox unavailable: bubblewrap (bwrap) is not installed; the verifier never runs unsandboxed".into());
+    }
+    Err("sandbox unavailable: execution is supported only on macOS (Seatbelt) and Linux (bubblewrap)".into())
+}
+
+/// bubblewrap arguments mirroring the Seatbelt profile: read-only system
+/// directories that exist on this host, the executable, launcher and explicit
+/// external files read-only, only the candidate writable, inert home, no
+/// network or other inherited namespaces. Pure so it can be tested anywhere.
+pub fn bubblewrap_args(
+    root: &Path,
+    executable: &Path,
+    launcher: &Path,
+    files: &[PathBuf],
+) -> Result<Vec<String>, String> {
+    fn plain(path: &Path) -> Result<String, String> {
+        let s = path.to_str().ok_or("non-UTF8 sandbox path")?;
+        if s.contains(['\n', '\r', '\0']) || s.is_empty() || !path.is_absolute() {
+            return Err("invalid sandbox path".into());
+        }
+        Ok(s.to_owned())
+    }
+    let mut args: Vec<String> = ["--unshare-all", "--die-with-parent", "--new-session"]
+        .map(String::from)
+        .to_vec();
+    args.extend(["--dev", "/dev", "--proc", "/proc"].map(String::from));
+    for dir in [
+        "/usr", "/lib", "/lib64", "/lib32", "/bin", "/sbin", "/etc", "/opt", "/nix",
+    ] {
+        if Path::new(dir).is_dir() {
+            args.extend(["--ro-bind", dir, dir].map(String::from));
+        }
+    }
+    for file in [executable, launcher]
+        .into_iter()
+        .chain(files.iter().map(PathBuf::as_path))
+    {
+        let p = plain(file)?;
+        args.extend(["--ro-bind".into(), p.clone(), p]);
+    }
+    let root = plain(root)?;
+    args.extend(["--bind".into(), root.clone(), root.clone()]);
+    args.extend(["--chdir".into(), root]);
+    args.extend(["--dir", "/var/empty", "--remount-ro", "/var/empty"].map(String::from));
+    Ok(args)
+}
+
 #[derive(Debug, Serialize)]
 pub struct ProcessResult {
     pub success: bool,
@@ -22,7 +86,6 @@ pub struct ProcessResult {
     pub timed_out: bool,
     pub output_limit: bool,
 }
-#[cfg(target_os = "macos")]
 fn literal(path: &Path) -> Result<String, String> {
     let s = path.to_str().ok_or("non-UTF8 sandbox path")?;
     if s.contains(['\n', '\r', '\0']) {
@@ -33,7 +96,6 @@ fn literal(path: &Path) -> Result<String, String> {
         s.replace('\\', "\\\\").replace('"', "\\\"")
     ))
 }
-#[cfg(target_os = "macos")]
 fn capture(
     mut reader: impl Read + std::os::fd::AsRawFd + Send + 'static,
     over: Arc<AtomicBool>,
@@ -106,23 +168,16 @@ pub fn verify(
     if !(1..=120).contains(&timeout_secs) {
         return Err("verifier timeout must be 1..120 seconds".into());
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (cwd, launcher);
-        Err("sandbox unavailable: execution is supported only on macOS in this release".into())
-    }
-    #[cfg(target_os = "macos")]
-    {
-        verify_macos(argv, cwd, timeout_secs, launcher)
-    }
+    let backend = select_backend()?;
+    verify_sandboxed(argv, cwd, timeout_secs, launcher, backend)
 }
 
-#[cfg(target_os = "macos")]
-fn verify_macos(
+fn verify_sandboxed(
     argv: &[String],
     cwd: &Path,
     timeout_secs: u64,
     launcher: &Path,
+    backend: Backend,
 ) -> Result<ProcessResult, String> {
     use std::os::{fd::AsRawFd, unix::net::UnixStream};
     let root = fs::canonicalize(cwd).map_err(|e| e.to_string())?;
@@ -145,6 +200,77 @@ fn verify_macos(
         }
     }
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    // Explicit external regular-file arguments (e.g. immutable check.py) can be read, not modified.
+    let mut external_files = Vec::new();
+    for arg in &argv[1..] {
+        let path = PathBuf::from(arg);
+        if path.is_absolute() && path.is_file() {
+            external_files.push(fs::canonicalize(path).map_err(|e| e.to_string())?);
+        }
+    }
+    let mut command = match &backend {
+        Backend::Bubblewrap(bwrap) => {
+            let mut command = Command::new(bwrap);
+            command.args(bubblewrap_args(
+                &root,
+                &executable,
+                &launcher,
+                &external_files,
+            )?);
+            command
+        }
+        Backend::Seatbelt => {
+            let mut command = Command::new("/usr/bin/sandbox-exec");
+            command.args([
+                "-p",
+                &seatbelt_profile(&root, &executable, &launcher, &external_files)?,
+            ]);
+            command
+        }
+    };
+    // Private launch-status channel, not stdout/stderr or a candidate file.
+    // The native helper closes this descriptor on successful exec. The target
+    // and all of its descendants therefore cannot forge launch diagnostics.
+    let (launch_reader, launch_writer) = UnixStream::pair().map_err(|e| e.to_string())?;
+    let launch_fd = launch_writer.as_raw_fd();
+    command
+        .arg(&launcher)
+        .arg("--internal-verifier-exec")
+        .arg(launch_fd.to_string())
+        .arg(&executable)
+        .args(&argv[1..])
+        .current_dir(&root)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin")
+        // Never use a writable candidate directory for interpreter startup.
+        // No read/write sandbox grant is added for this inert system home.
+        .env("HOME", "/var/empty")
+        .env("TMPDIR", &tmp)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        // Disable Python user-site startup explicitly. Also keep cwd
+        // off Python's implicit import path (3.11+); explicit trusted wrappers
+        // remain responsible for imports and other interpreter-specific flags.
+        .env("PYTHONNOUSERSITE", "1")
+        .env("PYTHONSAFEPATH", "1")
+        .env("LANG", "en_US.UTF-8")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    supervise(
+        command,
+        launch_fd,
+        launch_reader,
+        launch_writer,
+        timeout_secs,
+    )
+}
+
+fn seatbelt_profile(
+    root: &Path,
+    executable: &Path,
+    launcher: &Path,
+    external_files: &[PathBuf],
+) -> Result<String, String> {
     let mut profile = String::from("(version 1)(deny default)(allow process*)(allow sysctl-read)(allow mach-lookup)(allow file-read-metadata)");
     // System executables need root-directory reads at startup. Literal means only
     // that directory, not its descendants (in particular not users' homes).
@@ -173,54 +299,32 @@ fn verify_macos(
     profile.push_str("(allow file-write* (literal \"/dev/null\"))");
     profile.push_str(&format!(
         "(allow file-read* file-write* (subpath {}))",
-        literal(&root)?
+        literal(root)?
     ));
     profile.push_str(&format!(
         "(allow file-read* (literal {}))",
-        literal(&executable)?
+        literal(executable)?
     ));
     profile.push_str(&format!(
         "(allow file-read* (literal {}))",
-        literal(&launcher)?
+        literal(launcher)?
     ));
-    // Explicit external regular-file arguments (e.g. immutable check.py) can be read, not modified.
-    for arg in &argv[1..] {
-        let path = PathBuf::from(arg);
-        if path.is_absolute() && path.is_file() {
-            let path = fs::canonicalize(path).map_err(|e| e.to_string())?;
-            profile.push_str(&format!("(allow file-read* (literal {}))", literal(&path)?));
-        }
+    for path in external_files {
+        profile.push_str(&format!("(allow file-read* (literal {}))", literal(path)?));
     }
-    // Private launch-status channel, not stdout/stderr or a candidate file.
-    // The native helper closes this descriptor on successful exec. The target
-    // and all of its descendants therefore cannot forge launch diagnostics.
-    let (launch_reader, launch_writer) = UnixStream::pair().map_err(|e| e.to_string())?;
-    let launch_fd = launch_writer.as_raw_fd();
-    let mut command = Command::new("/usr/bin/sandbox-exec");
-    command
-        .args(["-p", &profile])
-        .arg(&launcher)
-        .arg("--internal-verifier-exec")
-        .arg(launch_fd.to_string())
-        .arg(&executable)
-        .args(&argv[1..])
-        .current_dir(&root)
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin")
-        // Never use a writable candidate directory for interpreter startup.
-        // No read/write sandbox grant is added for this inert system home.
-        .env("HOME", "/var/empty")
-        .env("TMPDIR", &tmp)
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        // Disable Python user-site startup explicitly. Also keep cwd
-        // off Python's implicit import path (3.11+); explicit trusted wrappers
-        // remain responsible for imports and other interpreter-specific flags.
-        .env("PYTHONNOUSERSITE", "1")
-        .env("PYTHONSAFEPATH", "1")
-        .env("LANG", "en_US.UTF-8")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    Ok(profile)
+}
+
+/// Shared supervision for every backend: launch handshake, output capture
+/// with deadline and size bounds, CPU/file/descriptor limits, process-group
+/// cleanup, and cancellation.
+fn supervise(
+    mut command: Command,
+    launch_fd: i32,
+    launch_reader: std::os::unix::net::UnixStream,
+    launch_writer: std::os::unix::net::UnixStream,
+    timeout_secs: u64,
+) -> Result<ProcessResult, String> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
