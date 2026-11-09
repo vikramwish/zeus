@@ -107,6 +107,9 @@ pub struct Job {
     /// Retries for transient model failures (408/429/5xx, connection errors).
     #[serde(default = "model_retries")]
     pub model_retries: usize,
+    /// Output token ceiling sent where the protocol requires one (Anthropic).
+    #[serde(default = "max_output_tokens")]
+    pub max_output_tokens: u32,
     #[serde(default)]
     pub verifier: Vec<String>,
     #[serde(default = "timeout")]
@@ -129,6 +132,9 @@ fn model_timeout() -> u64 {
 fn model_retries() -> usize {
     crate::model::DEFAULT_RETRIES
 }
+fn max_output_tokens() -> u32 {
+    crate::model::DEFAULT_MAX_OUTPUT_TOKENS
+}
 #[derive(Clone, Copy, Default)]
 pub struct Approvals {
     pub network: bool,
@@ -143,6 +149,7 @@ impl Job {
         }
         crate::model::validate_model_timeout(self.model_timeout)?;
         crate::model::validate_retries(self.model_retries)?;
+        crate::model::validate_max_output_tokens(self.max_output_tokens)?;
         if self.auth == AuthMode::Chatgpt
             && (self.protocol != Protocol::Responses
                 || self.endpoint != "https://api.openai.com/v1/responses"

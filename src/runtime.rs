@@ -537,7 +537,9 @@ pub fn run(job: Job) -> Result<Value, String> {
         job.protocol,
         job.model_timeout,
     )?
-    .with_retries(job.model_retries)?;
+    .with_retries(job.model_retries)?
+    .with_max_output_tokens(job.max_output_tokens)?
+    .with_truncation_recovery();
     if let Some(limit) = job.autonomy.max_model_calls {
         client = client.with_request_limit(limit)?;
     }

@@ -21,6 +21,7 @@ const MAX_TURNS: usize = 64;
 const MAX_TOOL_CALLS: usize = 64;
 const MAX_CONTEXT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOOL_RESULT_BYTES: usize = 256 * 1024;
+const MAX_CONSECUTIVE_TRUNCATIONS: usize = 1;
 
 fn push_message(
     messages: &mut Vec<Value>,
@@ -199,6 +200,7 @@ pub fn run(
         json!({"role":"user","content":task}),
     )?;
     let mut tool_calls = 0;
+    let mut consecutive_truncations = 0;
     for turn in 1..=max_turns {
         crate::cancel::check()?;
         // A signal during a blocking request surfaces as a transport error;
@@ -207,6 +209,25 @@ pub fn run(
             .complete(&messages, &tools)
             .map_err(|e| crate::cancel::check().err().unwrap_or(e))?;
         host.observe("model_turn", json!({"turn":turn,"message":message}))?;
+        if message.get(crate::model::TRUNCATED) == Some(&Value::Bool(true)) {
+            consecutive_truncations += 1;
+            if consecutive_truncations > MAX_CONSECUTIVE_TRUNCATIONS {
+                return Err("model output truncated twice in a row at the output token limit; raise max_output_tokens or split the work".into());
+            }
+            // Keep the partial text as context, never its partial tool calls.
+            push_message(
+                &mut messages,
+                &mut context_bytes,
+                json!({"role":"assistant","content":message["content"].as_str().unwrap_or("")}),
+            )?;
+            push_message(
+                &mut messages,
+                &mut context_bytes,
+                json!({"role":"user","content":"Your previous response was cut off at the output token limit and its tool calls were discarded. Do not repeat it. Continue in smaller steps: at most one tool call per turn, and split large file contents across several edit_file or write_file calls."}),
+            )?;
+            continue;
+        }
+        consecutive_truncations = 0;
         let calls = message
             .get("tool_calls")
             .and_then(Value::as_array)

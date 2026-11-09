@@ -50,9 +50,22 @@ pub struct ChatClient {
     request_budget: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
     timeout_seconds: u64,
     retries: usize,
+    max_output_tokens: u32,
+    recover_truncation: bool,
 }
 
 pub(crate) const DEFAULT_RETRIES: usize = 3;
+pub(crate) const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 8192;
+/// Marker on an assistant message whose output hit the token ceiling. Stripped
+/// before replay; the agent loop turns it into a continuation request.
+pub(crate) const TRUNCATED: &str = "_truncated";
+
+pub(crate) fn validate_max_output_tokens(tokens: u32) -> Result<(), String> {
+    if !(256..=131072).contains(&tokens) {
+        return Err("max_output_tokens must be 256..131072".into());
+    }
+    Ok(())
+}
 const MAX_RETRIES: usize = 8;
 const RETRY_AFTER_CAP: std::time::Duration = std::time::Duration::from_secs(30);
 const ERROR_BODY_LIMIT: usize = 2048;
@@ -214,6 +227,8 @@ impl ChatClient {
             timeout_seconds,
             // The raw client never retries; the job opts in via with_retries.
             retries: 0,
+            max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
+            recover_truncation: false,
         })
     }
     /// Bounded retries for transient failures only; each attempt is one
@@ -222,6 +237,19 @@ impl ChatClient {
         validate_retries(retries)?;
         self.retries = retries;
         Ok(self)
+    }
+    pub fn with_max_output_tokens(mut self, tokens: u32) -> Result<Self, String> {
+        validate_max_output_tokens(tokens)?;
+        self.max_output_tokens = tokens;
+        Ok(self)
+    }
+    /// Return a response cut at the output ceiling as a `_truncated` assistant
+    /// message (text kept, partial tool calls dropped) instead of an error.
+    /// Only a caller that continues the conversation, like the agent loop,
+    /// should enable this; the raw client stays strict.
+    pub fn with_truncation_recovery(mut self) -> Self {
+        self.recover_truncation = true;
+        self
     }
     /// Install a run-wide attempted-request limit before cloning the client.
     /// Clones share the remaining counter; failed requests are not refunded.
@@ -253,7 +281,7 @@ impl ChatClient {
             }
             Protocol::Anthropic => {
                 request = request.set("anthropic-version", "2023-06-01");
-                anthropic_input(&self.model, messages)?
+                anthropic_input(&self.model, messages, self.max_output_tokens)?
             }
         };
         if !tools.is_empty() {
@@ -266,6 +294,7 @@ impl ChatClient {
         let protocol = self.protocol;
         let budget = self.request_budget.clone();
         let (retries, timeout_seconds) = (self.retries, self.timeout_seconds);
+        let recover_truncation = self.recover_truncation;
         interruptible(move || {
             let mut attempt = 0;
             loop {
@@ -280,6 +309,12 @@ impl ChatClient {
                         .map_err(|_| "autonomy model-call budget exhausted")?;
                 }
                 let failure = match exchange(request.clone(), &body, protocol, timeout_seconds) {
+                    Ok(message)
+                        if !recover_truncation
+                            && message.get(TRUNCATED) == Some(&Value::Bool(true)) =>
+                    {
+                        return Err("model output truncated at the output token limit".into())
+                    }
                     Ok(message) => return Ok(message),
                     Err(failure) => failure,
                 };
@@ -447,6 +482,11 @@ fn chat_message(body: &Value) -> Result<Value, String> {
         Some(Value::Array(calls)) => Some(calls),
         _ => return Err("tool_calls must be an array".into()),
     };
+    // A response cut at the output ceiling is recoverable: keep its text, drop
+    // any half-written tool calls, and let the loop ask for a continuation.
+    if choice.get("finish_reason").is_some_and(|r| r == "length") {
+        return Ok(truncated(content.and_then(Value::as_str).unwrap_or("")));
+    }
     if calls.is_none_or(|c| c.is_empty())
         && content
             .and_then(Value::as_str)
@@ -467,7 +507,7 @@ fn chat_message(body: &Value) -> Result<Value, String> {
     Ok(message.clone())
 }
 
-fn anthropic_input(model: &str, messages: &[Value]) -> Result<Value, String> {
+fn anthropic_input(model: &str, messages: &[Value], max_tokens: u32) -> Result<Value, String> {
     let mut system = Vec::new();
     let mut turns: Vec<Value> = Vec::new();
     for message in messages {
@@ -542,7 +582,8 @@ fn anthropic_input(model: &str, messages: &[Value]) -> Result<Value, String> {
             turns.push(json!({"role":role,"content":blocks}));
         }
     }
-    let mut payload = json!({"model":model,"messages":turns,"max_tokens":4096,"stream":false});
+    let mut payload =
+        json!({"model":model,"messages":turns,"max_tokens":max_tokens,"stream":false});
     if !system.is_empty() {
         payload["system"] = json!(system);
     }
@@ -574,6 +615,12 @@ fn anthropic_output(body: &Value) -> Result<Value, String> {
             _ => return Err("unsupported Anthropic content capability".into()),
         }
     }
+    if body["stop_reason"] == "max_tokens" {
+        return Ok(truncated(&content));
+    }
+    if body["stop_reason"] == "model_context_window_exceeded" {
+        return Err("model context window exceeded".into());
+    }
     let expected = if calls.is_empty() {
         "end_turn"
     } else {
@@ -587,6 +634,9 @@ fn anthropic_output(body: &Value) -> Result<Value, String> {
     )
 }
 
+fn truncated(content: &str) -> Value {
+    json!({"role":"assistant","content":content,TRUNCATED:true})
+}
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str, String> {
     v.get(key)
         .and_then(Value::as_str)
@@ -784,6 +834,21 @@ fn responses_stream(reader: impl std::io::Read) -> Result<Value, String> {
                         return Err("Responses completion is not successful".into());
                     }
                     return responses_output(&response["output"]);
+                }
+                "response.incomplete"
+                    if value["response"]["incomplete_details"]["reason"] == "max_output_tokens" =>
+                {
+                    let mut partial = String::new();
+                    for item in array(&value["response"], "output")? {
+                        if item["type"] == "message" {
+                            for part in item["content"].as_array().into_iter().flatten() {
+                                if let Some(t) = part["text"].as_str() {
+                                    partial.push_str(t);
+                                }
+                            }
+                        }
+                    }
+                    return Ok(truncated(&partial));
                 }
                 "response.failed" | "response.incomplete" | "error" => {
                     return Err("Responses inference failed or incomplete".into())
