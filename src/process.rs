@@ -288,7 +288,11 @@ fn verify_macos(
             Err(error) => break Err(error),
             Ok(None) => (),
         }
-        if start.elapsed() >= Duration::from_secs(timeout_secs) || over.load(Ordering::Relaxed) {
+        let cancelled = crate::cancel::cancelled();
+        if start.elapsed() >= Duration::from_secs(timeout_secs)
+            || over.load(Ordering::Relaxed)
+            || cancelled
+        {
             timed_out = start.elapsed() >= Duration::from_secs(timeout_secs);
             #[cfg(unix)]
             unsafe {
@@ -318,6 +322,7 @@ fn verify_macos(
         .map_err(|_| "stderr collector panicked")?
         .map_err(|e| e.to_string())?;
     timed_out |= expired.load(Ordering::Relaxed);
+    crate::cancel::check()?;
     let status = status.map_err(|e| e.to_string())?;
     let output_limit = over.load(Ordering::Relaxed);
     if launch != b"R" {

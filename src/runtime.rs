@@ -25,10 +25,54 @@ struct StateLock {
 impl StateLock {
     fn acquire(state: &Path) -> Result<Self, String> {
         let path = state.join("run.lock");
-        let mut file=OpenOptions::new().create_new(true).write(true).open(&path).map_err(|e|format!("state is locked or inaccessible ({e}); do not remove a lock until its owner has stopped"))?;
-        writeln!(file, "{}", std::process::id()).map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-        Ok(Self { path })
+        for reclaimed in [false, true] {
+            match OpenOptions::new().create_new(true).write(true).open(&path) {
+                Ok(mut file) => {
+                    writeln!(file, "{}", std::process::id()).map_err(|e| e.to_string())?;
+                    file.sync_all().map_err(|e| e.to_string())?;
+                    return Ok(Self { path });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && !reclaimed => {
+                    let owner = Self::owner(&path)?;
+                    // Only a lock whose recorded owner has provably exited is
+                    // stale. Unparsable or foreign owners stay locked.
+                    if Self::process_exists(owner) {
+                        return Err(format!(
+                            "state is locked by running process {owner}; do not remove run.lock until it has stopped"
+                        ));
+                    }
+                    fs::remove_file(&path).map_err(|e| {
+                        format!("stale lock from exited process {owner} cannot be removed: {e}")
+                    })?;
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "state is locked or inaccessible ({e}); do not remove a lock until its owner has stopped"
+                    ))
+                }
+            }
+        }
+        Err("state is locked: lock reappeared while reclaiming".into())
+    }
+    fn owner(path: &Path) -> Result<i32, String> {
+        use std::io::Read;
+        let mut text = String::new();
+        File::open(path)
+            .and_then(|f| f.take(64).read_to_string(&mut text))
+            .map_err(|e| format!("state is locked; owner unreadable ({e})"))?;
+        text.trim()
+            .parse::<i32>()
+            .ok()
+            .filter(|pid| *pid > 0)
+            .ok_or_else(|| {
+                "state is locked by an unknown owner; inspect run.lock before removing it"
+                    .to_string()
+            })
+    }
+    fn process_exists(pid: i32) -> bool {
+        // ESRCH is the only proof of absence; EPERM means alive but foreign.
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        alive || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
     }
 }
 impl Drop for StateLock {
@@ -511,7 +555,27 @@ pub fn run(job: Job) -> Result<Value, String> {
             Ok(report)
         }
         Err(error) => {
-            let report = json!({"status":"infrastructure_error","error":error,"policy_updated":false,"run_dir":run_dir,"autonomy":job.autonomy});
+            let status = if crate::cancel::cancelled() {
+                "cancelled"
+            } else {
+                "infrastructure_error"
+            };
+            let report = json!({"status":status,"error":error,"policy_updated":false,"run_dir":run_dir,"autonomy":job.autonomy});
+            // The audit may not exist yet (snapshot failures); append only if it does.
+            let events = run_dir.join("events.jsonl");
+            if events.is_file() {
+                let mut file = OpenOptions::new()
+                    .append(true)
+                    .open(&events)
+                    .map_err(|e| e.to_string())?;
+                serde_json::to_writer(
+                    &mut file,
+                    &json!({"id":"event-final","kind":"run_error","data":{"status":status,"error":error}}),
+                )
+                .map_err(|e| e.to_string())?;
+                file.write_all(b"\n").map_err(|e| e.to_string())?;
+                file.sync_data().map_err(|e| e.to_string())?;
+            }
             write_new(&run_dir.join("error.json"), &report)?;
             Err(format!(
                 "{error}; evidence retained in {}",

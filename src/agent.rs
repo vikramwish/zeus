@@ -195,7 +195,12 @@ pub fn run(
     )?;
     let mut tool_calls = 0;
     for _ in 0..max_turns {
-        let message = client.complete(&messages, &tools)?;
+        crate::cancel::check()?;
+        // A signal during a blocking request surfaces as a transport error;
+        // report the cancellation, not the interrupted read.
+        let message = client
+            .complete(&messages, &tools)
+            .map_err(|e| crate::cancel::check().err().unwrap_or(e))?;
         let calls = message
             .get("tool_calls")
             .and_then(Value::as_array)

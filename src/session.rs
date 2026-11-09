@@ -112,7 +112,7 @@ fn read_run(state: &Path, id: &str, budget: &mut usize) -> Result<Value, String>
     let learning = artifact(&path.join("learning.json"), false, budget)?;
     let status = error
         .as_ref()
-        .map(|_| "infrastructure_error")
+        .map(|e| e["status"].as_str().unwrap_or("infrastructure_error"))
         .or_else(|| report.as_ref().and_then(|r| r["status"].as_str()))
         .unwrap_or("incomplete");
     Ok(json!({"id":id,"run_dir":path,"status":status,

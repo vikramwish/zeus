@@ -172,46 +172,78 @@ impl ChatClient {
                 })
                 .map_err(|_| "autonomy model-call budget exhausted")?;
         }
-        let response = request
-            .set("Content-Type", "application/json")
-            .send_bytes(&body)
-            .map_err(|error| match error {
-                ureq::Error::Status(status, _) => format!("model request failed: HTTP {status}"),
-                ureq::Error::Transport(error) => {
-                    format!("model request failed: {:?}", error.kind())
-                }
-            })?;
-        if response.status() != 200 {
-            return Err("model returned a non-success status".into());
-        }
-        use std::io::Read;
-        if self.protocol == Protocol::Responses {
-            if response.header("Content-Type").is_none_or(|v| {
-                !v.split(';')
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .eq_ignore_ascii_case("text/event-stream")
-            }) {
-                return Err("expected Responses event stream".into());
+        let protocol = self.protocol;
+        interruptible(move || exchange(request, &body, protocol))
+    }
+}
+
+/// Send and parse one request on a helper thread so a cancellation signal is
+/// honored while the socket read blocks (a blocking read restarts after EINTR).
+/// An abandoned request stays bounded by the agent's whole-request deadline.
+fn interruptible(
+    perform: impl FnOnce() -> Result<Value, String> + Send + 'static,
+) -> Result<Value, String> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let spawned = std::thread::Builder::new()
+        .name("model-request".into())
+        .spawn(move || {
+            let _ = tx.send(perform());
+        });
+    if spawned.is_err() {
+        return Err("cannot start model request thread".into());
+    }
+    loop {
+        crate::cancel::check()?;
+        match rx.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok(result) => return result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                return Err("model request thread ended without a result".into())
             }
-            return responses_stream(response.into_reader());
         }
-        let mut bytes = Vec::new();
-        response
-            .into_reader()
-            .take((RESPONSE_LIMIT + 1) as u64)
-            .read_to_end(&mut bytes)
-            .map_err(|_| "failed to read model response".to_string())?;
-        if bytes.len() > RESPONSE_LIMIT {
-            return Err("model response exceeds 2 MiB limit".into());
+    }
+}
+
+fn exchange(request: ureq::Request, body: &[u8], protocol: Protocol) -> Result<Value, String> {
+    let response = request
+        .set("Content-Type", "application/json")
+        .send_bytes(body)
+        .map_err(|error| match error {
+            ureq::Error::Status(status, _) => format!("model request failed: HTTP {status}"),
+            ureq::Error::Transport(error) => {
+                format!("model request failed: {:?}", error.kind())
+            }
+        })?;
+    if response.status() != 200 {
+        return Err("model returned a non-success status".into());
+    }
+    use std::io::Read;
+    if protocol == Protocol::Responses {
+        if response.header("Content-Type").is_none_or(|v| {
+            !v.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("text/event-stream")
+        }) {
+            return Err("expected Responses event stream".into());
         }
-        let body: Value =
-            serde_json::from_slice(&bytes).map_err(|_| "invalid model JSON".to_string())?;
-        match self.protocol {
-            Protocol::Anthropic => anthropic_output(&body),
-            _ => chat_message(&body),
-        }
+        return responses_stream(response.into_reader());
+    }
+    let mut bytes = Vec::new();
+    response
+        .into_reader()
+        .take((RESPONSE_LIMIT + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "failed to read model response".to_string())?;
+    if bytes.len() > RESPONSE_LIMIT {
+        return Err("model response exceeds 2 MiB limit".into());
+    }
+    let body: Value =
+        serde_json::from_slice(&bytes).map_err(|_| "invalid model JSON".to_string())?;
+    match protocol {
+        Protocol::Anthropic => anthropic_output(&body),
+        _ => chat_message(&body),
     }
 }
 

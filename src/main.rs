@@ -182,6 +182,8 @@ fn console(job: zeus::config::Job) -> Result<(), String> {
             eprintln!("zeus: {error}");
             failed = true;
         }
+        // A signal cancels the current task only; the console stays usable.
+        zeus::cancel::reset();
     }
     if failed {
         Err("one or more console tasks or commands failed or remained unverified".into())
@@ -250,6 +252,7 @@ fn execute() -> Result<(), String> {
                 return Err("unknown run flag".into());
             }
             let job = zeus::config::Job::load(Path::new(path), approval)?;
+            zeus::cancel::install()?;
             if command == "console" {
                 console(job)
             } else {
@@ -262,6 +265,7 @@ fn execute() -> Result<(), String> {
 fn main() {
     if let Err(error) = execute() {
         eprintln!("zeus: {error}");
-        std::process::exit(1);
+        // Conventional 128+SIGINT so wrappers can tell a cancel from a failure.
+        std::process::exit(if zeus::cancel::cancelled() { 130 } else { 1 });
     }
 }

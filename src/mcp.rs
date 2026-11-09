@@ -212,15 +212,23 @@ impl McpClient {
         )?;
         let mut received = 0;
         loop {
+            crate::cancel::check()?;
             let remaining = deadline
                 .checked_duration_since(Instant::now())
                 .ok_or("MCP request timed out")?;
-            let line = self
+            // Wake periodically so a cancellation signal is honored mid-wait.
+            let line = match self
                 .stdout
                 .as_ref()
                 .ok_or("MCP connection closed")?
-                .recv_timeout(remaining)
-                .map_err(|_| "MCP response timed out or closed")??;
+                .recv_timeout(remaining.min(Duration::from_millis(100)))
+            {
+                Ok(line) => line?,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err("MCP response timed out or closed".into())
+                }
+            };
             received += line.len();
             if received > MAX_BYTES {
                 return Err("MCP response limit exceeded".into());
