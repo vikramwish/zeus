@@ -80,6 +80,11 @@ impl Drop for StateLock {
         let _ = fs::remove_file(&self.path);
     }
 }
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
 struct Audit {
     file: Mutex<File>,
     next: AtomicU64,
@@ -100,8 +105,11 @@ impl Audit {
     fn record(&self, kind: &str, data: Value) -> Result<String, String> {
         let mut file = self.file.lock().map_err(|_| "audit lock poisoned")?;
         let id = format!("event-{:06}", self.next.fetch_add(1, Ordering::Relaxed));
-        serde_json::to_writer(&mut *file, &json!({"id":id,"kind":kind,"data":data}))
-            .map_err(|e| e.to_string())?;
+        serde_json::to_writer(
+            &mut *file,
+            &json!({"id":id,"ts_ms":now_ms(),"kind":kind,"data":data}),
+        )
+        .map_err(|e| e.to_string())?;
         file.write_all(b"\n").map_err(|e| e.to_string())?;
         file.sync_data().map_err(|e| e.to_string())?;
         Ok(id)
@@ -163,6 +171,13 @@ fn args_only(args: &Value, allowed: &[&str]) -> Result<(), String> {
     Ok(())
 }
 impl Host {
+    fn role(&self) -> &'static str {
+        match self.authority {
+            Authority::Integrator => "implementer",
+            Authority::Files(_) => "coder",
+            Authority::ReadOnly => "analyst",
+        }
+    }
     fn can_write(&self) -> bool {
         self.authority.can_write()
             && self
@@ -338,6 +353,14 @@ impl Host {
     }
 }
 impl ToolHost for Host {
+    fn observe(&self, kind: &str, data: Value) -> Result<(), String> {
+        let mut data = data;
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert("role".into(), json!(self.role()));
+            obj.insert("worker".into(), json!(self.worker));
+        }
+        self.shared.audit.record(kind, data).map(|_| ())
+    }
     fn schemas(&self) -> Vec<Value> {
         let mut tools=vec![
             schema("search_files","Bounded literal text search in candidate files, with source IDs, excerpts and explicit truncation. No regex or shell.",json!({"query":{"type":"string","minLength":1},"max_results":{"type":"integer","minimum":1,"maximum":100}}),&["query","max_results"]),
@@ -371,11 +394,7 @@ impl ToolHost for Host {
         tools
     }
     fn call(&self, name: &str, args: Value) -> Result<Value, String> {
-        let role = match self.authority {
-            Authority::Integrator => "implementer",
-            Authority::Files(_) => "coder",
-            Authority::ReadOnly => "analyst",
-        };
+        let role = self.role();
         self.shared
             .audit
             .record("tool_request", json!({"role":role,"worker":self.worker,"write_paths":self.authority.paths(),"name":name,"args":args}))?;
@@ -571,7 +590,7 @@ pub fn run(job: Job) -> Result<Value, String> {
                     .map_err(|e| e.to_string())?;
                 serde_json::to_writer(
                     &mut file,
-                    &json!({"id":"event-final","kind":"run_error","data":{"status":status,"error":error}}),
+                    &json!({"id":"event-final","ts_ms":now_ms(),"kind":"run_error","data":{"status":status,"error":error}}),
                 )
                 .map_err(|e| e.to_string())?;
                 file.write_all(b"\n").map_err(|e| e.to_string())?;

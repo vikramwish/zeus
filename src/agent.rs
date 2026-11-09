@@ -5,6 +5,11 @@ use serde_json::Value;
 pub trait ToolHost: Send + Sync {
     fn schemas(&self) -> Vec<Value>;
     fn call(&self, name: &str, args: Value) -> Result<Value, String>;
+    /// Durable trace of loop progress (each model turn), recorded before any
+    /// tool runs so a later failure cannot erase what the model said.
+    fn observe(&self, _kind: &str, _data: Value) -> Result<(), String> {
+        Ok(())
+    }
 }
 #[derive(Clone, Serialize, Debug)]
 pub struct AgentResult {
@@ -194,13 +199,14 @@ pub fn run(
         json!({"role":"user","content":task}),
     )?;
     let mut tool_calls = 0;
-    for _ in 0..max_turns {
+    for turn in 1..=max_turns {
         crate::cancel::check()?;
         // A signal during a blocking request surfaces as a transport error;
         // report the cancellation, not the interrupted read.
         let message = client
             .complete(&messages, &tools)
             .map_err(|e| crate::cancel::check().err().unwrap_or(e))?;
+        host.observe("model_turn", json!({"turn":turn,"message":message}))?;
         let calls = message
             .get("tool_calls")
             .and_then(Value::as_array)
