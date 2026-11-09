@@ -40,9 +40,12 @@ source, state directory, model endpoint and model fields are still required.
   requests consume an admitted slot, including each transient-failure retry
   governed by `model_retries`; there is no automatic refund.
   Omission preserves existing per-agent bounds without an additional global cap.
+- `max_total_tokens`: optional hard stop on summed provider-reported input and
+  output tokens across every agent in the run. Checked after each model turn,
+  including a final answer; exceeding it is an infrastructure error, not a
+  reward. Pricing remains external.
 - Existing `max_turns` and `model_timeout` still bound individual agent loops and
-  model requests. The model-call cap is not a token/dollar cap or a whole-job
-  deadline; provider token usage and pricing remain external.
+  model requests; the job-level `max_job_seconds` bounds the whole run.
 
 Start a configured run using the existing approvals:
 

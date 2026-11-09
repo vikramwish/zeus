@@ -289,7 +289,15 @@ pub fn run(
                     .map_err(|e| crate::cancel::check().err().unwrap_or(e))?
             }
         };
-        host.observe("model_turn", json!({"turn":turn,"message":message}))?;
+        // Usage is audit data, never transcript content.
+        let mut message = message;
+        let usage = message
+            .as_object_mut()
+            .and_then(|m| m.remove(crate::model::USAGE));
+        host.observe(
+            "model_turn",
+            json!({"turn":turn,"message":message,"usage":usage}),
+        )?;
         if message.get(crate::model::TRUNCATED) == Some(&Value::Bool(true)) {
             consecutive_truncations += 1;
             if consecutive_truncations > MAX_CONSECUTIVE_TRUNCATIONS {

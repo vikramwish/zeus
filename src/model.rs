@@ -459,7 +459,29 @@ fn exchange(
     .map_err(Failure::from)
 }
 
+/// Normalized provider usage, attached to the assistant message under `_usage`
+/// and removed by the agent loop before the message enters the transcript.
+pub(crate) const USAGE: &str = "_usage";
+fn attach_usage(mut message: Value, usage: Option<&Value>, input: &str, output: &str) -> Value {
+    if let Some(usage) = usage {
+        if let (Some(i), Some(o)) = (usage[input].as_u64(), usage[output].as_u64()) {
+            message[USAGE] = json!({"input_tokens":i,"output_tokens":o});
+        }
+    }
+    message
+}
+
 fn chat_message(body: &Value) -> Result<Value, String> {
+    let message = chat_message_inner(body)?;
+    Ok(attach_usage(
+        message,
+        body.get("usage"),
+        "prompt_tokens",
+        "completion_tokens",
+    ))
+}
+
+fn chat_message_inner(body: &Value) -> Result<Value, String> {
     let choices = body
         .get("choices")
         .and_then(Value::as_array)
@@ -629,9 +651,15 @@ fn anthropic_output(body: &Value) -> Result<Value, String> {
     if body["stop_reason"] != expected {
         return Err("incomplete or unsupported Anthropic stop reason".into());
     }
-    chat_message(
+    let message = chat_message(
         &json!({"choices":[{"message":{"role":"assistant","content":content,"tool_calls":calls,"_anthropic_content":replay}}]}),
-    )
+    )?;
+    Ok(attach_usage(
+        message,
+        body.get("usage"),
+        "input_tokens",
+        "output_tokens",
+    ))
 }
 
 fn truncated(content: &str) -> Value {
@@ -833,7 +861,13 @@ fn responses_stream(reader: impl std::io::Read) -> Result<Value, String> {
                     {
                         return Err("Responses completion is not successful".into());
                     }
-                    return responses_output(&response["output"]);
+                    let message = responses_output(&response["output"])?;
+                    return Ok(attach_usage(
+                        message,
+                        response.get("usage"),
+                        "input_tokens",
+                        "output_tokens",
+                    ));
                 }
                 "response.incomplete"
                     if value["response"]["incomplete_details"]["reason"] == "max_output_tokens" =>

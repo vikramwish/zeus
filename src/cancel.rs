@@ -5,10 +5,41 @@
 //! releases its state lock. A second signal restores the default disposition
 //! and re-raises, so a wedged run can still be killed; the next run reclaims
 //! the stale lock by PID liveness.
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 static CANCELLED: AtomicBool = AtomicBool::new(false);
+/// Whole-job deadline as milliseconds since the process-local epoch; 0 = none.
+static DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
+static DEADLINE_SECS: AtomicU64 = AtomicU64::new(0);
 pub const MESSAGE: &str = "run cancelled by signal";
+
+fn epoch() -> std::time::Instant {
+    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *EPOCH.get_or_init(std::time::Instant::now)
+}
+fn now_ms() -> u64 {
+    epoch().elapsed().as_millis() as u64
+}
+
+/// Arm the whole-job deadline; every cancellation checkpoint then enforces it.
+pub fn set_deadline(seconds: u64) {
+    DEADLINE_SECS.store(seconds, Ordering::SeqCst);
+    DEADLINE_MS.store(now_ms() + seconds * 1000 + 1, Ordering::SeqCst);
+}
+fn deadline_exceeded() -> bool {
+    let deadline = DEADLINE_MS.load(Ordering::SeqCst);
+    deadline != 0 && now_ms() >= deadline
+}
+/// Why work must stop: "cancelled" (signal) or "deadline_exceeded".
+pub fn reason() -> Option<&'static str> {
+    if cancelled() {
+        Some("cancelled")
+    } else if deadline_exceeded() {
+        Some("deadline_exceeded")
+    } else {
+        None
+    }
+}
 
 extern "C" fn on_signal(signal: libc::c_int) {
     if CANCELLED.swap(true, Ordering::SeqCst) {
@@ -44,16 +75,23 @@ pub fn cancelled() -> bool {
     CANCELLED.load(Ordering::SeqCst)
 }
 
-/// Err once a signal has been received; callers stop starting new work.
+/// Err once a signal has been received or the job deadline has passed;
+/// callers stop starting new work.
 pub fn check() -> Result<(), String> {
     if cancelled() {
         Err(MESSAGE.into())
+    } else if deadline_exceeded() {
+        Err(format!(
+            "job deadline exceeded after {}s (max_job_seconds)",
+            DEADLINE_SECS.load(Ordering::SeqCst)
+        ))
     } else {
         Ok(())
     }
 }
 
-/// Clear the flag between independent console tasks.
+/// Clear the flag and deadline between independent console tasks.
 pub fn reset() {
     CANCELLED.store(false, Ordering::SeqCst);
+    DEADLINE_MS.store(0, Ordering::SeqCst);
 }

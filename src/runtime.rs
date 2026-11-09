@@ -127,6 +127,15 @@ struct Shared {
     verifier_timeout: u64,
     checks: AtomicUsize,
     verifier_failed: AtomicBool,
+    token_budget: Option<u64>,
+    input_tokens: AtomicU64,
+    output_tokens: AtomicU64,
+    model_calls: AtomicU64,
+}
+impl Shared {
+    fn usage(&self) -> Value {
+        json!({"input_tokens":self.input_tokens.load(Ordering::Relaxed),"output_tokens":self.output_tokens.load(Ordering::Relaxed),"model_calls":self.model_calls.load(Ordering::Relaxed)})
+    }
 }
 struct Host {
     shared: Arc<Shared>,
@@ -363,7 +372,25 @@ impl ToolHost for Host {
             obj.insert("role".into(), json!(self.role()));
             obj.insert("worker".into(), json!(self.worker));
         }
-        self.shared.audit.record(kind, data).map(|_| ())
+        self.shared.audit.record(kind, data.clone())?;
+        if kind == "model_turn" {
+            let shared = &self.shared;
+            shared.model_calls.fetch_add(1, Ordering::Relaxed);
+            let input = data["usage"]["input_tokens"].as_u64().unwrap_or(0);
+            let output = data["usage"]["output_tokens"].as_u64().unwrap_or(0);
+            let total = shared.input_tokens.fetch_add(input, Ordering::Relaxed)
+                + input
+                + shared.output_tokens.fetch_add(output, Ordering::Relaxed)
+                + output;
+            // The budget is a hard stop, even when this turn was the final answer.
+            if shared.token_budget.is_some_and(|limit| total > limit) {
+                return Err(format!(
+                    "autonomy token budget exhausted: {total} tokens used, limit {}",
+                    shared.token_budget.unwrap_or(0)
+                ));
+            }
+        }
+        Ok(())
     }
     fn schemas(&self) -> Vec<Value> {
         let mut tools=vec![
@@ -547,6 +574,7 @@ pub fn run(job: Job) -> Result<Value, String> {
     if let Some(limit) = job.autonomy.max_model_calls {
         client = client.with_request_limit(limit)?;
     }
+    crate::cancel::set_deadline(job.max_job_seconds);
     let state = prepare_state(&job)?;
     let _lock = StateLock::acquire(&state)?;
     let mut policy = Policy::load(&state.join("policy.json"))?;
@@ -581,11 +609,7 @@ pub fn run(job: Job) -> Result<Value, String> {
             Ok(report)
         }
         Err(error) => {
-            let status = if crate::cancel::cancelled() {
-                "cancelled"
-            } else {
-                "infrastructure_error"
-            };
+            let status = crate::cancel::reason().unwrap_or("infrastructure_error");
             let report = json!({"status":status,"error":error,"policy_updated":false,"run_dir":run_dir,"autonomy":job.autonomy});
             // The audit may not exist yet (snapshot failures); append only if it does.
             let events = run_dir.join("events.jsonl");
@@ -689,6 +713,10 @@ fn run_inner(
         verifier_timeout: job.verifier_timeout,
         checks: AtomicUsize::new(0),
         verifier_failed: AtomicBool::new(false),
+        token_budget: job.autonomy.max_total_tokens,
+        input_tokens: AtomicU64::new(0),
+        output_tokens: AtomicU64::new(0),
+        model_calls: AtomicU64::new(0),
     });
     let analyst = Host {
         shared: shared.clone(),
@@ -925,7 +953,7 @@ fn run_inner(
     let final_inventory = shared.workspace.list()?;
     write_new(&run_dir.join("final-inventory.json"), &final_inventory)?;
     Ok(
-        json!({"status":status,"candidate":shared.workspace.root,"run_dir":run_dir,"strategy":strategy,"attempts":attempts,"baseline":baseline,"verification":verification,"summary":final_text,"policy_updated":false,"limitations":["Verifier covers only its declared checks, not universal equivalence or original-source recovery.","MCP tools are trusted host integrations, not sandboxed by this runtime.","No Codex-level performance or intelligence benchmark has been completed."]}),
+        json!({"status":status,"candidate":shared.workspace.root,"run_dir":run_dir,"strategy":strategy,"attempts":attempts,"baseline":baseline,"verification":verification,"summary":final_text,"usage":shared.usage(),"policy_updated":false,"limitations":["Verifier covers only its declared checks, not universal equivalence or original-source recovery.","MCP tools are trusted host integrations, not sandboxed by this runtime.","No Codex-level performance or intelligence benchmark has been completed."]}),
     )
 }
 
@@ -1034,6 +1062,10 @@ for line in sys.stdin:
                     verifier_timeout: 1,
                     checks: AtomicUsize::new(0),
                     verifier_failed: AtomicBool::new(false),
+                    token_budget: None,
+                    input_tokens: AtomicU64::new(0),
+                    output_tokens: AtomicU64::new(0),
+                    model_calls: AtomicU64::new(0),
                 }),
                 authority: Authority::Integrator,
                 worker: None,

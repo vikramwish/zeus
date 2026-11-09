@@ -26,6 +26,8 @@ pub struct Autonomy {
     pub max_repairs: usize,
     /// One shared request budget for planner, workers, integration and repairs.
     pub max_model_calls: Option<usize>,
+    /// Shared input+output token budget, from provider usage reports.
+    pub max_total_tokens: Option<u64>,
 }
 impl Default for Autonomy {
     fn default() -> Self {
@@ -33,6 +35,7 @@ impl Default for Autonomy {
             write_paths: None,
             max_repairs: 2,
             max_model_calls: None,
+            max_total_tokens: None,
         }
     }
 }
@@ -46,6 +49,9 @@ impl Autonomy {
             .is_some_and(|n| !(1..=1024).contains(&n))
         {
             return Err("autonomy.max_model_calls must be 1..1024".into());
+        }
+        if self.max_total_tokens.is_some_and(|n| n == 0) {
+            return Err("autonomy.max_total_tokens must be at least 1".into());
         }
         if let Some(paths) = &self.write_paths {
             if paths.len() > 128 {
@@ -113,6 +119,9 @@ pub struct Job {
     /// Transcript bytes past which the oldest tool results are elided.
     #[serde(default = "compaction_threshold_bytes")]
     pub compaction_threshold_bytes: usize,
+    /// Whole-job wall-clock deadline, enforced at every cancellation checkpoint.
+    #[serde(default = "max_job_seconds")]
+    pub max_job_seconds: u64,
     #[serde(default)]
     pub verifier: Vec<String>,
     #[serde(default = "timeout")]
@@ -141,6 +150,9 @@ fn max_output_tokens() -> u32 {
 fn compaction_threshold_bytes() -> usize {
     crate::agent::DEFAULT_COMPACTION_THRESHOLD
 }
+fn max_job_seconds() -> u64 {
+    3600
+}
 #[derive(Clone, Copy, Default)]
 pub struct Approvals {
     pub network: bool,
@@ -157,6 +169,9 @@ impl Job {
         crate::model::validate_retries(self.model_retries)?;
         crate::model::validate_max_output_tokens(self.max_output_tokens)?;
         crate::agent::validate_compaction_threshold(self.compaction_threshold_bytes)?;
+        if !(1..=86400).contains(&self.max_job_seconds) {
+            return Err("max_job_seconds must be 1..86400".into());
+        }
         if self.auth == AuthMode::Chatgpt
             && (self.protocol != Protocol::Responses
                 || self.endpoint != "https://api.openai.com/v1/responses"
