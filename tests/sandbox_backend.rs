@@ -11,7 +11,7 @@ fn bubblewrap_profile_mirrors_the_seatbelt_boundary() {
     let exe = temp.path().join("python3");
     let launcher = temp.path().join("zeus");
     let script = temp.path().join("check.py");
-    let args = bubblewrap_args(&root, &exe, &launcher, &[script.clone()]).unwrap();
+    let args = bubblewrap_args(&root, &exe, &launcher, std::slice::from_ref(&script)).unwrap();
     let joined = args.join(" ");
     let s = |p: &Path| p.to_str().unwrap().to_string();
     // Isolation: no network, no inherited namespaces, dies with the host.
