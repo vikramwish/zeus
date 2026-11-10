@@ -1,4 +1,5 @@
 //! Local scripted HTTP + real Zeus CLI. No live inference or provider billing.
+mod common;
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -88,7 +89,7 @@ fn exercise(
     let verifier = tmp.path().join("verify.py");
     fs::write(&verifier, "raise SystemExit(1)\n").unwrap();
     let job = tmp.path().join("job.json");
-    fs::write(&job,json!({"task":"Update allowed.txt without changing protected.txt", "source":source,"state_dir":tmp.path().join("state"),"endpoint":endpoint,"model":"scripted-fixture","max_turns":4,"model_timeout":2,"strategy":if parallel {"parallel"} else {"direct"},"autonomy":autonomy,"verifier":if verify {json!(["/opt/homebrew/bin/python3","-I",verifier])} else {json!([])}}).to_string()).unwrap();
+    fs::write(&job,json!({"task":"Update allowed.txt without changing protected.txt", "source":source,"state_dir":tmp.path().join("state"),"endpoint":endpoint,"model":"scripted-fixture","max_turns":4,"model_timeout":2,"strategy":if parallel {"parallel"} else {"direct"},"autonomy":autonomy,"verifier":if verify {json!([common::python3(),"-I",verifier])} else {json!([])}}).to_string()).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_zeus"))
         .arg("run")
         .arg(job)

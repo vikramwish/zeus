@@ -1,3 +1,4 @@
+mod common;
 use zeus::process;
 
 fn verify(
@@ -23,10 +24,11 @@ mod macos {
         time::{Duration, Instant},
     };
 
+    // Cargo's per-target scratch directory: tests never write into the
+    // developer's home directory.
     fn candidate() -> tempfile::TempDir {
-        let scratch = std::path::PathBuf::from(std::env::var_os("HOME").unwrap())
-            .join(".hermes/cache/scratch");
-        fs::create_dir_all(&scratch).unwrap();
+        let scratch = Path::new(env!("CARGO_TARGET_TMPDIR"));
+        fs::create_dir_all(scratch).unwrap();
         tempfile::tempdir_in(scratch).unwrap()
     }
 
@@ -265,7 +267,7 @@ mod macos {
     #[test]
     fn verifier_does_not_inherit_private_launch_channel() {
         let temp = candidate();
-        let result = verify(&["/opt/homebrew/bin/python3".into(), "-I".into(), "-c".into(),
+        let result = verify(&[super::common::python3(), "-I".into(), "-c".into(),
             "import os, stat\nfor fd in range(3, 128):\n try: mode = os.fstat(fd).st_mode\n except OSError: continue\n assert not stat.S_ISSOCK(mode), ('inherited launch socket', fd)\nprint('channel closed')\n".into()], temp.path(), 10).unwrap();
         assert!(result.success, "{result:?}");
         assert_eq!(result.stdout.trim(), "channel closed");

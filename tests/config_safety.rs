@@ -1,3 +1,4 @@
+mod common;
 use serde_json::json;
 use std::{fs, path::Path};
 use zeus::config::{Approvals, Job};
@@ -33,11 +34,7 @@ fn external_entry_points_are_required_without_guessing_interpreter_arguments() {
     fs::write(&script, "exit 0\n").unwrap();
     for argv in [
         vec!["/bin/sh".into(), script.display().to_string()],
-        vec![
-            "/opt/homebrew/bin/python3".into(),
-            "-I".into(),
-            script.display().to_string(),
-        ],
+        vec![common::python3(), "-I".into(), script.display().to_string()],
         vec!["/bin/sh".into()],
         vec![],
     ] {
@@ -46,11 +43,7 @@ fn external_entry_points_are_required_without_guessing_interpreter_arguments() {
     for argv in [
         vec!["/bin/sh".into(), "missing.sh".into()],
         vec!["/bin/sh".into(), "-c".into(), "./check.sh".into()],
-        vec![
-            "/opt/homebrew/bin/python3".into(),
-            "-m".into(),
-            "pytest".into(),
-        ],
+        vec![common::python3(), "-m".into(), "pytest".into()],
         vec![
             "/bin/sh".into(),
             script.display().to_string(),

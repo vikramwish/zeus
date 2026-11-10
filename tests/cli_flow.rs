@@ -1,3 +1,4 @@
+mod common;
 use std::io::{Read, Write};
 use std::process::Command;
 
@@ -85,7 +86,7 @@ fn full_run_edits_private_candidate_verifies_and_updates_policy() {
         "from pathlib import Path\nassert Path('main.txt').read_text() == '42'\n",
     )
     .unwrap();
-    std::fs::write(&job,serde_json::to_vec(&serde_json::json!({"task":"Make main.txt contain exactly 42","source":source,"state_dir":state,"endpoint":endpoint,"model":"scripted-protocol-fixture","max_turns":4,"verifier":["/opt/homebrew/bin/python3","-I",verifier],"verifier_timeout":5})).unwrap()).unwrap();
+    std::fs::write(&job,serde_json::to_vec(&serde_json::json!({"task":"Make main.txt contain exactly 42","source":source,"state_dir":state,"endpoint":endpoint,"model":"scripted-protocol-fixture","max_turns":4,"verifier":[common::python3(),"-I",verifier],"verifier_timeout":5})).unwrap()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_zeus"))
         .args([
             "run",

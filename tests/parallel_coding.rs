@@ -1,4 +1,5 @@
 //! Actual CLI + deterministic local protocol; no model quality claims.
+mod common;
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -72,7 +73,7 @@ impl Run {
         let mut job = json!({"task":"Make both files new", "source":root.join("source"),"state_dir":root.join("state"),"context":"coding","endpoint":format!("http://{}/v1/chat/completions",listener.local_addr().unwrap()),"model":"fixture","model_timeout":8,"max_turns":8});
         job["strategy"] = json!("parallel");
         if verifier {
-            job["verifier"] = json!(["/opt/homebrew/bin/python3", "-I", root.join("verify.py")]);
+            job["verifier"] = json!([common::python3(), "-I", root.join("verify.py")]);
             job["verifier_timeout"] = json!(5);
         }
         fs::write(root.join("job.json"), job.to_string()).unwrap();

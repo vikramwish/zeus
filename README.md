@@ -115,7 +115,7 @@ The details below distinguish implemented behavior from the larger ambition.
 
 ## Build and test
 
-Requirements: Rust/Cargo, plus macOS or Linux with bubblewrap for the verifier sandbox. The test fixture also uses Python 3; the end-to-end test currently expects Homebrew Python at `/opt/homebrew/bin/python3`.
+Requirements: Rust/Cargo, plus macOS or Linux with bubblewrap for the verifier sandbox. The test fixtures also use Python 3, resolved from `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` or `PATH` at test time.
 
 ```sh
 cargo build --release
