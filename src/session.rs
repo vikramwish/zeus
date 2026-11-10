@@ -156,8 +156,10 @@ pub fn list(state: &Path, query: Option<&str>) -> Result<Value, String> {
     let query = query.map(str::to_lowercase);
     for id in ids {
         let mut value = read_run(state, &id, &mut budget)?;
-        for key in ["start", "report", "error", "learning"] {
-            value.as_object_mut().unwrap().remove(key);
+        if let Some(object) = value.as_object_mut() {
+            for key in ["start", "report", "error", "learning"] {
+                object.remove(key);
+            }
         }
         if query.as_ref().is_none_or(|q| {
             ["id", "task", "summary", "status"].iter().any(|key| {

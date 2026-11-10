@@ -30,10 +30,9 @@ pub fn list_skills(workspace: &Workspace) -> Result<serde_json::Value, String> {
             match read_skill(workspace, name) {
                 Ok(mut skill) => {
                     // Reuse read validation, but emit no body until explicitly requested.
-                    skill
-                        .as_object_mut()
-                        .expect("read_skill returns an object")
-                        .remove("content");
+                    if let Some(object) = skill.as_object_mut() {
+                        object.remove("content");
+                    }
                     skills.push(skill);
                 }
                 Err(error) => skipped.push(format!("{} ({error})", entry.path)),

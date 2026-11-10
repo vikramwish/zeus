@@ -595,13 +595,13 @@ fn anthropic_input(model: &str, messages: &[Value], max_tokens: u32) -> Result<V
             }
             _ => return Err("unsupported Anthropic message role".into()),
         };
-        if turns.last().is_some_and(|m| m["role"] == role) {
-            turns.last_mut().unwrap()["content"]
-                .as_array_mut()
-                .unwrap()
-                .extend(blocks);
-        } else {
-            turns.push(json!({"role":role,"content":blocks}));
+        match turns
+            .last_mut()
+            .filter(|m| m["role"] == role)
+            .and_then(|m| m["content"].as_array_mut())
+        {
+            Some(content) => content.extend(blocks),
+            None => turns.push(json!({"role":role,"content":blocks})),
         }
     }
     let mut payload =

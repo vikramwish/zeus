@@ -10,6 +10,8 @@ const MAX_FILE: u64 = 16 * 1024 * 1024;
 const MAX_TOTAL: u64 = 64 * 1024 * 1024;
 const MAX_TEXT: usize = 128 * 1024;
 const MAX_FILES: usize = 2000;
+/// Directory nesting bound for the snapshot walker, which recurses per level.
+const MAX_DEPTH: usize = 128;
 static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize)]
@@ -205,10 +207,21 @@ pub fn inspect(source: &Path) -> Result<Inventory, String> {
     } else {
         source
     };
-    walk(source, base, &mut inventory, &mut total)?;
+    walk(source, base, &mut inventory, &mut total, 0)?;
     Ok(inventory)
 }
-fn walk(path: &Path, base: &Path, inv: &mut Inventory, total: &mut u64) -> Result<(), String> {
+fn walk(
+    path: &Path,
+    base: &Path,
+    inv: &mut Inventory,
+    total: &mut u64,
+    depth: usize,
+) -> Result<(), String> {
+    if depth > MAX_DEPTH {
+        return Err(format!(
+            "directory depth limit exceeded ({MAX_DEPTH}); select a smaller target"
+        ));
+    }
     let name = path
         .file_name()
         .and_then(|s| s.to_str())
@@ -239,7 +252,7 @@ fn walk(path: &Path, base: &Path, inv: &mut Inventory, total: &mut u64) -> Resul
         }
         children.sort();
         for child in children {
-            walk(&child, base, inv, total)?;
+            walk(&child, base, inv, total, depth + 1)?;
         }
     } else if meta.is_file() {
         if inv.entries.len() >= MAX_FILES {
@@ -574,7 +587,10 @@ impl Workspace {
             .ok_or("old_string not found")?;
         // Advance one character, not the match length: overlapping occurrences
         // (for example "aa" in "aaa") are ambiguous too.
-        let next = start + current.content[start..].chars().next().unwrap().len_utf8();
+        let Some(first) = current.content[start..].chars().next() else {
+            return Err("old_string not found".into());
+        };
+        let next = start + first.len_utf8();
         if current.content[next..].contains(old_string) {
             return Err("old_string is ambiguous".into());
         }

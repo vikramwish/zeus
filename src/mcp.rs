@@ -44,8 +44,14 @@ impl McpClient {
             }
         }
         let mut child = command.spawn().map_err(|_| "MCP spawn failed")?;
-        let stdin = child.stdin.take().unwrap();
-        let stdout = child.stdout.take().unwrap();
+        let (stdin, stdout) = match (child.stdin.take(), child.stdout.take()) {
+            (Some(stdin), Some(stdout)) => (stdin, stdout),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("MCP pipe setup failed".into());
+            }
+        };
         let (tx, rx) = mpsc::sync_channel(1);
         let mut client = Self {
             child,
