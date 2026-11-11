@@ -8,13 +8,24 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 const MAX_BYTES: usize = 2 * 1024 * 1024;
-const TIMEOUT: Duration = Duration::from_secs(30);
+pub const DEFAULT_TIMEOUT_SECONDS: u64 = 30;
+
+/// Per-request deadline bound for one server: handshake, each discovery page
+/// set and each tool call. A slow analyzer gets a larger value in its own
+/// entry; the transport limits stay fixed.
+pub fn validate_timeout(seconds: u64) -> Result<(), String> {
+    if !(1..=600).contains(&seconds) {
+        return Err("MCP timeout_seconds must be 1..600".into());
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct McpConfig {
     pub name: String,
     pub command: Vec<String>,
     pub allowed_tools: Vec<String>,
+    pub timeout_seconds: u64,
 }
 
 pub struct McpClient {
@@ -24,10 +35,13 @@ pub struct McpClient {
     stopped: bool,
     next_id: u64,
     schemas: Vec<Value>,
+    timeout: Duration,
 }
 impl McpClient {
     pub fn connect(config: &McpConfig) -> Result<Self, String> {
-        let deadline = Instant::now() + TIMEOUT;
+        validate_timeout(config.timeout_seconds)?;
+        let timeout = Duration::from_secs(config.timeout_seconds);
+        let deadline = Instant::now() + timeout;
         let executable = config.command.first().ok_or("empty MCP command")?;
         let mut command = Command::new(executable);
         command
@@ -60,6 +74,7 @@ impl McpClient {
             stopped: false,
             next_id: 1,
             schemas: vec![],
+            timeout,
         };
         let fd = client.stdin.as_raw_fd();
         // Nonblocking writes ensure a server that stops reading cannot defeat the deadline.
@@ -182,6 +197,7 @@ impl McpClient {
         }
         let mut remaining = bytes.as_slice();
         while !remaining.is_empty() {
+            crate::cancel::check()?;
             if Instant::now() >= deadline {
                 return Err("MCP request timed out".into());
             }
@@ -198,7 +214,7 @@ impl McpClient {
         Ok(())
     }
     fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
-        let result = self.request_inner(method, params, Instant::now() + TIMEOUT);
+        let result = self.request_inner(method, params, Instant::now() + self.timeout);
         if result.is_err() {
             self.stop();
         }

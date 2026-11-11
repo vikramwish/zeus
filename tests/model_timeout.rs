@@ -164,6 +164,7 @@ fn timeout_bounds_are_validated_before_state_or_credentials() {
         network: true,
         exec: false,
         mcp: false,
+        plugins: false,
     };
     std::fs::write(&path, base.to_string()).unwrap();
     assert_eq!(Job::load(&path, approvals).unwrap().model_timeout, 180);

@@ -25,6 +25,12 @@ Job JSON -> config validation -> exclusive state lock -> immutable source invent
 - main.rs: CLI approvals, authentication UI entry points and the internal verifier exec helper.
 - runtime.rs: job orchestration, audit ledger, reports and routing updates. Validated disjoint file ownership bounds coding workers; all workers join before integration or verification. The state lock prevents conflicting runs; the native launch handshake and resource outcomes keep infrastructure failures out of rewards. User-selected direct/parallel strategy overrides learned selection, never approvals.
 
+Coding plans may attach a bounded, task-specific `context` string to each coding
+assignment. The runtime transfers it only as untrusted worker context; scopes,
+budgets and verifier authority are unchanged. See
+[the delegation comparison](docs/DELEGATION-COMPARISON.md) for the source evidence
+and acceptance contract behind this Hermes-inspired behavioral adaptation.
+
 ## Trust boundaries
 
 Artifact text, model outputs, and MCP responses are untrusted data, never approval. Model cannot edit verifier specification, policy state or audit history. Read-only analysts cannot write; coding workers may write only assigned candidate files. Neither receives command execution, verifier, MCP, or recursive delegation capabilities. Verifier argv comes only from the user's job file; a passing process alone does not establish universal equivalence. Immutable verifier must be external to candidate and bind to candidate through its working directory. Test bodies embedded in writable candidate are not trustworthy rewards. Unknown target execution is off by default. MCP servers are executable host integrations, not a sandbox; approval is explicit and separate from model-network permission.

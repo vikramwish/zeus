@@ -23,6 +23,7 @@ fn load(root: &Path, verifier: Vec<String>) -> Result<Job, String> {
             network: true,
             exec: true,
             mcp: false,
+            plugins: false,
         },
     )
 }

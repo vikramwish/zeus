@@ -8,6 +8,7 @@ pub mod evidence;
 pub mod mcp;
 pub mod model;
 pub mod output;
+pub mod plugins;
 pub mod policy;
 pub mod process;
 pub mod runtime;

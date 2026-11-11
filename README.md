@@ -88,6 +88,7 @@ The local job file is yours to create; it is not a ready-to-run credential bundl
 | [Project context](docs/CONTEXT.md) | Repository guidance, workspace skills, search and exact edits |
 | [Run history](docs/SESSIONS.md) · [Output](docs/OUTPUT.md) | Independent-task console, retained evidence and model-facing reduction |
 | [External analyzers](docs/REA.md) | Allowlisted MCP integrations for evidence-driven reverse engineering |
+| [Local plugins](docs/PLUGINS.md) | Explicitly approved bundles of tools, skills and lifecycle hooks |
 | [Architecture](ARCHITECTURE.md) · [Security](SECURITY.md) | Component ownership, trust boundaries and present limits |
 
 ## Implementation reference
@@ -101,8 +102,10 @@ The details below distinguish implemented behavior from the larger ambition.
 - Native HTTP model/tool loop supporting OpenAI-compatible Chat Completions, streamed Responses, and Anthropic Messages; no dependency on the Hermes, Codex or Prime runtime.
 - Native ChatGPT subscription OAuth login, protected local credential storage, refresh, and account-specific model listing. API-key and local endpoints remain separate; no automatic billing fallback. Authentication/protocol fixtures are tested; real account authorization still requires the user's browser sign-in.
 - Direct execution or model-planned work with up to three parallel coding workers, each restricted to assigned files, followed by one integration agent. Read-only analysis remains available.
+- Optional planner context for each coding task, capped at 8 KiB and passed only as untrusted data to its assigned worker. The entire plan is validated before admission. See [the delegation comparison and acceptance evidence](docs/DELEGATION-COMPARISON.md).
 - Independent-task console and read-only browsing/search of retained runs. This is not conversation resume or multi-turn candidate continuation.
 - Root `AGENTS.md` project guidance, explicit workspace skill listing/reading, bounded literal search and exact digest-checked edits. Repository documents never grant permissions.
+- Local plugin manifests bundling namespaced MCP tools, inert skills and run-start/end/error hooks. Separate `--allow-plugins` approval and per-job allowlists; no automatic repository discovery or remote installation. See [the plugin contract and runnable example](docs/PLUGINS.md).
 - Conservative native output reduction for successful Rust libtest verifier output shown to the model; raw audit, verification results and rewards remain unchanged. This is RTK-inspired presentation, not RTK command-wrapper parity.
 - Private candidate snapshots: original targets are never intentionally edited. File writes require the current SHA-256; traversal and symlinks are rejected.
 - Artifact inventory and signature identification, including unknown-format reporting. Identification is not decompilation.

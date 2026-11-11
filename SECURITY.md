@@ -22,6 +22,12 @@ MCP servers are trusted, explicitly approved host programs. They may read host f
 
 The protocol client clears inherited environment except PATH/HOME/TMPDIR, refuses unlisted tools, bounds request/response traffic and time, and terminates its server process group on drop. HOME remains available for server functionality; a server can read credentials from disk. Never approve an untrusted server.
 
+## Plugins
+
+Plugin bundles require `--allow-plugins`, independently of ordinary MCP and verifier flags. Job-owned tool and hook allowlists are checked against bounded external manifests before any plugin starts. Plugins cannot be auto-discovered from candidate guidance. Model-callable plugin tools are exposed only to the integration implementer; scoped-autonomy jobs reject executable plugin capabilities. Skills are cached, digest-bound untrusted data and never grant authority.
+
+Plugin tools and lifecycle hooks use the same **unsandboxed trusted-host** boundary as MCP. A plugin may access host credentials, mutate source/verifier/audit files, or perform network operations; the allowlist is not a sandbox. A selected hook executes even when no model call is needed. Successful terminal hooks are followed by fresh verification when a verifier exists; changed outcomes and hook failures abort without policy learning. This prevents accidental stale verdicts, not malicious host-program interference. Error hooks are best-effort and do not run after cancellation or job-deadline expiration. See [PLUGINS.md](docs/PLUGINS.md) for payloads, limits, lifecycle semantics and library-caller responsibilities.
+
 ## Data and concurrency
 
 Common credential filenames are excluded from snapshots, and text files matching well-known key shapes are kept for the verifier but withheld from the model's read and search tools. Secrets in other shapes are not detected. Review target scope before allowing model access. Transcripts include selected source and model/tool content, and are stored inside a private state directory; never publish the runs directory.

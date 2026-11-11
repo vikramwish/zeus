@@ -48,9 +48,11 @@ atomic writes remain separate safety boundaries; faster scheduling cannot grant
 permissions.
 
 Joining is not forcible interruption: an in-flight synchronous `ToolHost` call
-must return, and model requests remain subject to their existing transport
-budgets. There is no new whole-job deadline, interrupt token, detached-work
-recovery or durable lifecycle-event stream. Process aborts are not caught.
+must return. The runtime already enforces `max_job_seconds`, cooperative signal
+cancellation, shared model-call limits, and provider-reported token accounting.
+Model-request helper threads may outlive a cancelled wait until their transport
+deadline; this does not detach the admitted coding workers or give helpers file
+tools. There is no detached-work recovery. Process aborts are not caught.
 
 ## Authority and protocol invariants
 
@@ -73,6 +75,48 @@ The job planner can return `{"tasks":[{"task":"implement A","write_paths":["a.rs
 Every coding task needs a nonempty exact-file scope. The full plan is validated before dispatch. Duplicate, ancestor/descendant and ASCII case-alias claims are rejected globally. Paths must use canonical relative ASCII spelling without traversal or repeated separators and must not name symlinks or directories. Unicode-named files remain supported by the integrator, but cannot currently be assigned to parallel coding workers. Existing workspace secret/path guards still apply to every write. If the user configured an autonomy allowlist, every assignment must be its subset.
 
 Workers receive read/search/evidence tools plus scoped write/edit; not verifier, MCP, shell or recursive delegation. Authority is checked at dispatch, not inferred from role text. Worker IDs and scopes are attached to tool audits and outcomes. All admitted workers join before integration and final verification. Infrastructure failure retains partial candidate edits and successful sibling outcomes, skips integration, and does not train the router.
+
+### Planner-to-worker context
+
+Coding task objects optionally include a `context` string for selected findings
+from the planner's investigation, separate from the task's goal:
+
+```json
+{
+  "tasks": [
+    {
+      "task": "Repair persistence",
+      "write_paths": ["store.rs"],
+      "context": "The save path returns before committing the new state. Recheck the current file before editing."
+    },
+    {"task": "Update the usage notes", "write_paths": ["README.md"]}
+  ]
+}
+```
+
+The decoded string is limited to **8192 UTF-8 bytes per task**. Omitted or empty
+context adds nothing; `null`, non-strings, duplicate fields, and oversized strings
+are rejected. The existing 4096-byte task limit and 64 KiB complete planner
+response limit still apply. Every task and scope is validated before admission,
+so an invalid handoff on a later task starts no earlier workers.
+
+Only the assigned worker receives the handoff, as a labelled JSON string in its
+initial user message, never in the system prompt. It is untrusted planner text,
+not permission, validated evidence, or a replacement for inspecting current
+files. It cannot expand file scopes, enable tools, change budgets, or alter the
+verifier. No full planner transcript or sibling handoff is copied. Workers still
+receive the original job, initial inventory, baseline result, autonomy limits,
+and root project guidance. Legacy string analysis tasks remain unchanged.
+
+The existing `planner` audit event retains the complete plan and handoffs.
+Integration still receives task-order worker reports after all admitted workers
+join; it does not automatically receive the planner handoffs. A worker may cite
+relevant findings in its report. Claims and source IDs in context are not
+automatically registered or validated as findings.
+
+This adapts Hermes's explicit goal/context separation without inheriting its
+system-prompt placement, tool surface, budgets, or lifecycle. See the
+[source comparison and acceptance evidence](DELEGATION-COMPARISON.md).
 
 Run `cargo test --locked --test parallel_coding --test planner_contract --test workspace_concurrency` for actual CLI protocol-fixture coverage of writable overlap, scope denial, invalid plans, source preservation and post-join verification.
 

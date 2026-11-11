@@ -34,6 +34,7 @@ fn installed_rea_inspects_a_real_compiled_go_artifact() {
             "--mcp".into(),
         ],
         allowed_tools: vec!["inspect_go_binary".into()],
+        timeout_seconds: zeus::mcp::DEFAULT_TIMEOUT_SECONDS,
     })
     .unwrap();
     assert_eq!(client.schemas().len(), 1);

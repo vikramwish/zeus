@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "echo",
+  "description": "Minimal local Zeus plugin: echo tool, usage skill and inert lifecycle hooks.",
+  "command": ["/usr/bin/env", "python3", "-I", "${PLUGIN_DIR}/server.py"],
+  "timeout_seconds": 30,
+  "tools": ["echo", "on_start", "on_end", "on_error"],
+  "skills": [{"name": "usage", "path": "guide.md"}],
+  "hooks": {
+    "run_start": "on_start",
+    "run_end": "on_end",
+    "run_error": "on_error"
+  }
+}

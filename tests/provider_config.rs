@@ -20,6 +20,7 @@ fn load(extra: Value) -> Result<Job, String> {
             network: true,
             exec: false,
             mcp: false,
+            plugins: false,
         },
     )
 }

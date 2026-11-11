@@ -16,6 +16,12 @@ pub struct ServerConfig {
     pub name: String,
     pub command: Vec<String>,
     pub allowed_tools: Vec<String>,
+    /// Per-request deadline for this server (default 30, allowed 1..600).
+    #[serde(default = "mcp_timeout")]
+    pub timeout_seconds: u64,
+}
+fn mcp_timeout() -> u64 {
+    crate::mcp::DEFAULT_TIMEOUT_SECONDS
 }
 /// User-owned limits. Repository text and model plans cannot enlarge them.
 #[derive(Clone, Debug, serde::Serialize, Deserialize)]
@@ -128,6 +134,8 @@ pub struct Job {
     pub verifier_timeout: u64,
     #[serde(default)]
     pub mcp: Vec<ServerConfig>,
+    #[serde(default)]
+    pub plugins: Vec<crate::plugins::PluginSpec>,
 }
 fn context() -> String {
     "reconstruction".into()
@@ -158,10 +166,19 @@ pub struct Approvals {
     pub network: bool,
     pub exec: bool,
     pub mcp: bool,
+    pub plugins: bool,
 }
 impl Job {
     pub(crate) fn validate_model(&self) -> Result<(), String> {
         self.autonomy.validate()?;
+        if self.autonomy.write_paths.is_some()
+            && self
+                .plugins
+                .iter()
+                .any(|p| !p.allowed_tools.is_empty() || !p.allowed_hooks.is_empty())
+        {
+            return Err("scoped autonomy cannot expose unsandboxed plugin tools or hooks".into());
+        }
         if self.autonomy.write_paths.is_some() && !self.mcp.is_empty() {
             return Err("scoped autonomy cannot expose unsandboxed MCP tools; remove MCP or explicitly use unrestricted candidate file scope".into());
         }
@@ -192,6 +209,9 @@ impl Job {
         }
         let mut job: Self =
             serde_json::from_slice(&bytes).map_err(|e| format!("invalid job: {e}"))?;
+        if !job.plugins.is_empty() && !approval.plugins {
+            return Err("plugins require --allow-plugins; approve only trusted bundles (tools and hooks execute host programs)".into());
+        }
         job.validate_model()?;
         if job.task.trim().is_empty() || job.task.len() > 32768 {
             return Err("task must be 1..32768 bytes".into());
@@ -240,6 +260,7 @@ impl Job {
             if server.allowed_tools.is_empty() || server.allowed_tools.len() > 64 {
                 return Err("MCP tools require a nonempty bounded allowlist".into());
             }
+            crate::mcp::validate_timeout(server.timeout_seconds)?;
         }
         if let Some(name) = &job.api_key_env {
             if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
@@ -254,6 +275,11 @@ impl Job {
         for value in [&mut job.source, &mut job.state_dir] {
             if value.is_relative() {
                 *value = base.join(&*value);
+            }
+        }
+        for plugin in &mut job.plugins {
+            if plugin.manifest.is_relative() {
+                plugin.manifest = base.join(&plugin.manifest);
             }
         }
         job.source = std::fs::canonicalize(&job.source).map_err(|e| format!("source: {e}"))?;

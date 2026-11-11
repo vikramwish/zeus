@@ -22,7 +22,8 @@ fn autonomy_settings_are_explicit_bounded_and_do_not_grant_execution() {
             Approvals {
                 network: true,
                 mcp: true,
-                exec: true
+                exec: true,
+                plugins: false,
             }
         )
         .is_err(),

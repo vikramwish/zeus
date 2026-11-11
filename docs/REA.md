@@ -17,6 +17,8 @@ Example `mcp` entry in a job file (adjust executable paths):
 }
 ```
 
+Each `mcp` entry accepts an optional `timeout_seconds` (default 30, allowed 1–600): the deadline for the handshake, for all discovery pages together and for each tool call. A slow analyzer gets a larger value in its own entry; the 2 MiB transport limits do not change. A request that misses its deadline closes that server's connection for the rest of the run.
+
 Then supply `--allow-mcp` in addition to model/verifier permissions. The model sees the qualified function `mcp__rea__inspect_go_binary`. The allowlist is literal; tool output cannot expand it. Analyst children do not receive MCP capabilities in this release.
 
 The installed REA 6.8.0 default output-schema catalog exceeded Zeus' 2 MiB transport limit in a real smoke test. Its native `REA_MCP_OUTPUT_SCHEMA_PROFILE=off` setting omits the large advertised output schemas while preserving REA's own result validation and structured evidence. This is configured only for that child process; no Hermes profile or global REA configuration is modified. Avoid weakening the transport bound to solve a catalog-size problem.

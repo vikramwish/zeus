@@ -47,8 +47,8 @@ fn verifier_exec(fd: &str, argv: &[String]) -> Result<(), String> {
 
 const USAGE: &str = "Usage:
   zeus inspect <path>
-  zeus run <job.json> [--allow-network] [--allow-exec] [--allow-mcp]
-  zeus console <job.json> [--allow-network] [--allow-exec] [--allow-mcp]
+  zeus run <job.json> [--allow-network] [--allow-exec] [--allow-mcp] [--allow-plugins]
+  zeus console <job.json> [--allow-network] [--allow-exec] [--allow-mcp] [--allow-plugins]
   zeus sessions list <state-dir>
   zeus sessions search <state-dir> <query>
   zeus sessions show <state-dir> <run-id>
@@ -244,11 +244,17 @@ fn execute() -> Result<(), String> {
                 network: flags.iter().any(|f| f == "--allow-network"),
                 exec: flags.iter().any(|f| f == "--allow-exec"),
                 mcp: flags.iter().any(|f| f == "--allow-mcp"),
+                plugins: flags.iter().any(|f| f == "--allow-plugins"),
             };
-            if flags
-                .iter()
-                .any(|f| !["--allow-network", "--allow-exec", "--allow-mcp"].contains(&f.as_str()))
-            {
+            if flags.iter().any(|f| {
+                ![
+                    "--allow-network",
+                    "--allow-exec",
+                    "--allow-mcp",
+                    "--allow-plugins",
+                ]
+                .contains(&f.as_str())
+            }) {
                 return Err("unknown run flag".into());
             }
             let job = zeus::config::Job::load(Path::new(path), approval)?;

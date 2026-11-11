@@ -29,6 +29,7 @@ for line in sys.stdin:
         assert initialized
         result = {'tools':[{'name':n,'description':n,'inputSchema':{'type':'object'}} for n in ['echo','forbidden']]}
     elif m == 'tools/call':
+        if mode == 'slowcall': time.sleep(2)
         result = {'content':[{'type':'text','text':json.dumps(r['params']['arguments'])}]}
         if mode == 'env': result['env'] = dict(os.environ)
         if mode == 'stderr': sys.stderr.write('secret' * 1000000); sys.stderr.flush()
@@ -70,6 +71,29 @@ fn config(mode: &str) -> McpConfig {
             mode.into(),
         ],
         allowed_tools: vec!["echo".into()],
+        timeout_seconds: 30,
+    }
+}
+#[test]
+fn per_server_timeout_bounds_slow_tool_calls() {
+    // A one-second budget fails a two-second call quickly and closes the
+    // connection; a generous budget for the same server succeeds.
+    let mut strict = config("slowcall");
+    strict.timeout_seconds = 1;
+    let mut c = McpClient::connect(&strict).unwrap();
+    let start = std::time::Instant::now();
+    let error = c.call("echo", json!({})).unwrap_err();
+    assert!(error.contains("timed out"), "{error}");
+    assert!(start.elapsed() < std::time::Duration::from_millis(1800));
+    assert!(c.call("echo", json!({})).is_err());
+    let mut lenient = config("slowcall");
+    lenient.timeout_seconds = 5;
+    let mut c = McpClient::connect(&lenient).unwrap();
+    assert!(c.call("echo", json!({})).is_ok());
+    for bad in [0, 601] {
+        let mut cfg = config("normal");
+        cfg.timeout_seconds = bad;
+        assert!(McpClient::connect(&cfg).is_err(), "accepted {bad}");
     }
 }
 #[test]
