@@ -110,6 +110,9 @@ pub struct Job {
     /// Explicit user routing; omission retains learned direct/parallel selection.
     #[serde(default)]
     pub strategy: Option<crate::policy::Strategy>,
+    /// Local experimental predictions only; never overrides strategy selection.
+    #[serde(default)]
+    pub shadow_judge: Option<crate::judge::Config>,
     #[serde(default)]
     pub autonomy: Autonomy,
     #[serde(default = "turns")]
@@ -280,6 +283,15 @@ impl Job {
         for plugin in &mut job.plugins {
             if plugin.manifest.is_relative() {
                 plugin.manifest = base.join(&plugin.manifest);
+            }
+        }
+        if let Some(path) = job
+            .shadow_judge
+            .as_mut()
+            .and_then(|c| c.model_path.as_mut())
+        {
+            if path.is_relative() {
+                *path = base.join(&*path);
             }
         }
         job.source = std::fs::canonicalize(&job.source).map_err(|e| format!("source: {e}"))?;

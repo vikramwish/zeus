@@ -640,12 +640,29 @@ pub fn run(job: Job) -> Result<Value, String> {
         .as_nanos();
     let run_dir = state.join(format!("run-{stamp}-{}", std::process::id()));
     private_dir(&run_dir)?;
+    if let Some(config) = &job.shadow_judge {
+        let (record, artifact) = crate::judge::evaluate(&job, config, strategy);
+        if let Some(bytes) = artifact {
+            let mut file = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(run_dir.join("shadow-model.json"))
+                .map_err(|e| e.to_string())?;
+            file.write_all(&bytes).map_err(|e| e.to_string())?;
+            file.sync_all().map_err(|e| e.to_string())?;
+        }
+        write_new(&run_dir.join("shadow-decision.json"), &record)?;
+    }
+    let started = std::time::Instant::now();
     let result = run_inner(&job, &client, strategy, &run_dir, plugins);
     match result {
         Ok(mut report) => {
             report["autonomy"] = json!(job.autonomy);
             // Commit proof before training. Only actual final verifier outcomes are eligible.
             write_new(&run_dir.join("report.json"), &report)?;
+            if job.shadow_judge.is_some() {
+                write_shadow_outcome(&run_dir, strategy, &report, started.elapsed())?;
+            }
             if report["status"] == "verified" || report["status"] == "failed" {
                 policy.update(&job.context, strategy, report["status"] == "verified")?;
                 policy.save(&state.join("policy.json"))?;
@@ -679,12 +696,38 @@ pub fn run(job: Job) -> Result<Value, String> {
                 file.sync_data().map_err(|e| e.to_string())?;
             }
             write_new(&run_dir.join("error.json"), &report)?;
+            if job.shadow_judge.is_some() {
+                write_shadow_outcome(&run_dir, strategy, &report, started.elapsed())?;
+            }
             Err(format!(
                 "{error}; evidence retained in {}",
                 run_dir.display()
             ))
         }
     }
+}
+fn write_shadow_outcome(
+    run_dir: &Path,
+    strategy: Strategy,
+    report: &Value,
+    elapsed: std::time::Duration,
+) -> Result<(), String> {
+    let success = match report["status"].as_str() {
+        Some("verified") => Some(true),
+        Some("failed") => Some(false),
+        _ => None,
+    };
+    write_new(
+        &run_dir.join("shadow-outcome.json"),
+        &json!({
+            "schema_version":1, "decision":"shadow-decision.json", "executed_strategy":strategy,
+            "status":report["status"], "verifier_success":success,
+            "elapsed_seconds":elapsed.as_secs_f64(),
+            "reported_usage":report.get("usage"),
+            "usage_completeness":"unknown",
+            "proof": if report.get("error").is_some() { "error.json" } else { "report.json" }
+        }),
+    )
 }
 // Planner-only framing boundary. Keep the original AgentResult in the audit;
 // never search for JSON inside arbitrary prose or rewrite other model output.
@@ -1225,6 +1268,41 @@ for line in sys.stdin:
                 .iter()
                 .all(|s| !s["function"]["name"].as_str().unwrap().starts_with("mcp__")));
             assert!(analyst.perform("mcp__a__b__echo", &args).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod shadow_outcome_tests {
+    use super::*;
+
+    #[test]
+    fn only_final_verifier_outcomes_receive_training_labels() {
+        for (status, label) in [
+            ("verified", Some(true)),
+            ("failed", Some(false)),
+            ("already_verified", None),
+            ("unverified", None),
+            ("infrastructure_error", None),
+            ("cancelled", None),
+            ("deadline_exceeded", None),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            write_shadow_outcome(
+                dir.path(),
+                Strategy::Direct,
+                &json!({"status":status}),
+                std::time::Duration::from_secs(2),
+            )
+            .unwrap();
+            let row: Value =
+                serde_json::from_slice(&fs::read(dir.path().join("shadow-outcome.json")).unwrap())
+                    .unwrap();
+            assert_eq!(row["verifier_success"], json!(label));
+            assert!(row["reported_usage"].is_null());
+            assert_eq!(row["usage_completeness"], "unknown");
+            assert_eq!(row["elapsed_seconds"], 2.0);
+            assert_eq!(row["executed_strategy"], "Direct");
         }
     }
 }

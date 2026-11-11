@@ -178,6 +178,8 @@ fn token_usage_is_accumulated_in_audit_and_report() {
         .filter(|e| e["kind"] == "model_turn")
         .collect();
     assert_eq!(turns.len(), 2);
+    assert!(!run_dir(temp.path()).join("shadow-decision.json").exists());
+    assert!(!run_dir(temp.path()).join("shadow-outcome.json").exists());
     assert_eq!(
         turns[0]["data"]["usage"],
         json!({"input_tokens":100,"output_tokens":10})
@@ -249,4 +251,151 @@ fn job_limits_are_validated() {
             "{stderr}"
         );
     }
+}
+
+#[test]
+fn shadow_without_model_abstains_and_does_not_add_model_calls() {
+    let temp = tempfile::tempdir().unwrap();
+    let (endpoint, count, stop) = fixture(|_| {
+        Some(with_usage(
+            json!({"role":"assistant","content":"Inspected."}),
+            "stop",
+            12,
+            4,
+        ))
+    });
+    let path = job(temp.path(), &endpoint, json!({"shadow_judge":{}}));
+    let out = run(&path);
+    stop.store(true, Ordering::Relaxed);
+    assert!(
+        temp.path().join("state").exists(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let dir = run_dir(temp.path());
+    let shadow: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("shadow-decision.json")).unwrap()).unwrap();
+    assert_eq!(shadow["executed_strategy"], "Direct");
+    assert_eq!(shadow["decision"]["reason"], "no_model");
+    assert_eq!(count.load(Ordering::Relaxed), 1);
+    let outcome: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("shadow-outcome.json")).unwrap()).unwrap();
+    assert_eq!(outcome["status"], "unverified");
+    assert!(outcome["verifier_success"].is_null());
+    assert!(!temp.path().join("state/policy.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("source/input.txt")).unwrap(),
+        "unchanged"
+    );
+}
+
+#[test]
+fn shadow_ranking_never_overrides_ucb_or_explicit_strategy_and_labels_only_executed_action() {
+    for explicit in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let (endpoint, count, stop) = fixture(|_| {
+            Some(with_usage(
+                json!({"role":"assistant","content":"No edits."}),
+                "stop",
+                12,
+                4,
+            ))
+        });
+        std::fs::write(temp.path().join("verify.py"), "raise SystemExit(1)\n").unwrap();
+        let mut extra = json!({"shadow_judge":{"model_path":"judge.json"}, "autonomy":{"max_repairs":0},
+            "verifier":[common_shadow::python3(),"-I",temp.path().join("verify.py")]});
+        if explicit {
+            extra["strategy"] = json!("direct");
+        }
+        let path = job(temp.path(), &endpoint, extra);
+        let job: zeus::config::Job =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let head = |logit| {
+            json!({"training_samples":50,"success_logit":[logit,0,0,0,0,0,0,0,0],
+            "log1p_tokens":[3,0,0,0,0,0,0,0,0],"log1p_seconds":[1,0,0,0,0,0,0,0,0]})
+        };
+        let artifact = json!({"schema_version":1,"feature_schema":"job_limits_v1","model_version":"synthetic-fixture",
+            "domain_sha256":zeus::judge::State::from_job(&job).domain_sha256,
+            "feature_min":[0,0,0,0,0,0,0,0],"feature_max":[1,1,1,1,1,1,1,1],
+            "direct":head(-4),"parallel":head(4)}).to_string();
+        std::fs::write(temp.path().join("judge.json"), &artifact).unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_zeus"))
+            .args([
+                "run",
+                path.to_str().unwrap(),
+                "--allow-network",
+                "--allow-exec",
+            ])
+            .output()
+            .unwrap();
+        stop.store(true, Ordering::Relaxed);
+        assert!(
+            temp.path().join("state").exists(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let dir = run_dir(temp.path());
+        assert!(
+            dir.join("shadow-decision.json").exists(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let read = |name: &str| -> Value {
+            serde_json::from_slice(&std::fs::read(dir.join(name)).unwrap()).unwrap()
+        };
+        let decision = read("shadow-decision.json");
+        assert_eq!(
+            decision["decision"],
+            json!({"kind":"rank","preferred":"Parallel"})
+        );
+        assert_eq!(decision["executed_strategy"], "Direct");
+        assert_eq!(
+            decision["routing_source"],
+            if explicit { "explicit" } else { "ucb" }
+        );
+        assert_eq!(read("report.json")["strategy"], "Direct");
+        assert_eq!(read("shadow-outcome.json")["verifier_success"], false);
+        assert_eq!(read("shadow-outcome.json")["executed_strategy"], "Direct");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("shadow-model.json")).unwrap(),
+            artifact
+        );
+        let policy: Value =
+            serde_json::from_slice(&std::fs::read(temp.path().join("state/policy.json")).unwrap())
+                .unwrap();
+        assert_eq!(policy["contexts"]["reconstruction"][0]["trials"], 1);
+        assert_eq!(policy["contexts"]["reconstruction"][1]["trials"], 0);
+        assert_eq!(count.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("source/input.txt")).unwrap(),
+            "unchanged"
+        );
+    }
+}
+#[path = "common/mod.rs"]
+mod common_shadow;
+
+#[test]
+fn invalid_shadow_model_and_transport_failure_do_not_create_training_rewards() {
+    let temp = tempfile::tempdir().unwrap();
+    let (endpoint, count, stop) = fixture(|_| Some("not-json".into()));
+    let path = job(
+        temp.path(),
+        &endpoint,
+        json!({"shadow_judge":{"model_path":"missing.json"}}),
+    );
+    let out = run(&path);
+    stop.store(true, Ordering::Relaxed);
+    assert!(!out.status.success());
+    let dir = run_dir(temp.path());
+    let decision: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("shadow-decision.json")).unwrap()).unwrap();
+    assert_eq!(decision["decision"]["reason"], "invalid_model");
+    let outcome: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("shadow-outcome.json")).unwrap()).unwrap();
+    assert_eq!(outcome["status"], "infrastructure_error");
+    assert!(outcome["verifier_success"].is_null());
+    assert_eq!(outcome["proof"], "error.json");
+    assert!(!temp.path().join("state/policy.json").exists());
+    assert_eq!(count.load(Ordering::Relaxed), 1);
 }

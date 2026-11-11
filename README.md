@@ -196,3 +196,7 @@ Read [SECURITY.md](SECURITY.md) before execution. In particular, the current mac
 There is no GUI, unrestricted shell, automatic analyzer installation, automatic deployment, LLM-weight training, production-grade session resume, or established Codex-level benchmark result. Model requests and tool calls are bounded; exhausted budgets and missing capabilities are errors, not successes.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for source-inspection notes and component ownership, and [the reconstruction exercise](examples/reconstruction/README.md) for the public fixture's contract and sensitivity checks.
+
+## Experimental decision scoring
+
+[Zeus Judge](docs/JUDGE.md) records typed, local shadow predictions for direct and parallel execution. It never controls routing. Enable `"shadow_judge": {}` to collect pre-run features and observed outcomes; optionally supply an offline linear-model artifact. No trained weights or calibrated accuracy claims are shipped.

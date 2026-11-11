@@ -5,6 +5,7 @@ pub mod cancel;
 pub mod config;
 pub mod context;
 pub mod evidence;
+pub mod judge;
 pub mod mcp;
 pub mod model;
 pub mod output;
