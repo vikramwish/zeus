@@ -48,11 +48,10 @@ without replaying the whole planner transcript. This is the highest-value small
 change supported by the inspected coding path: it improves the information
 boundary while leaving the authority and scheduling boundaries intact.
 
-**Other verified differences, not implemented:** Hermes exposes richer per-child
-terminal status and parent-visible tool traces, plus result-summary budgeting.
-Zeus already retains model/tool audits and fails the run on worker errors; a new
-result format or recovery policy needs a separate concrete use case. These are
-possible future work, not features added here.
+**Other verified differences:** Hermes exposes richer per-child terminal status
+and parent-visible tool traces. Zeus already retains model/tool audits and fails
+the run on worker errors; recovery policy remains future work. Result-summary
+budgeting was subsequently implemented as described below.
 
 **Does not fit Zeus:** recursive delegation; role-granted tool expansion;
 inherited shell/MCP execution; fresh independent child request budgets;
@@ -105,3 +104,32 @@ field, and the integrator still receives worker reports rather than automatic
 planner-transcript inheritance. Provider token accounting is post-response and
 cannot prevent already in-flight usage. Synchronous host calls must finish;
 transport helpers may outlive cancelled waits within their transport bounds.
+
+## Follow-up: bounded result collection
+
+Hermes `tools/delegate_tool_results.py::_apply_summary_budget` limits parent-facing
+summaries, preserves head and tail, and spills full output for later retrieval.
+Zeus previously concatenated full reports: three valid 1.5 MB reports exceeded
+its 4 MiB context limit before integration. This is a verified workflow failure,
+not a speculative formatting preference.
+
+Implemented in `output.rs::worker_handoff` and `runtime.rs::run_agents`: bounded,
+JSON-encoded report projections after full audit persistence and worker joining.
+Acceptance criteria were defined before editing: 8 KiB retained UTF-8 text per
+worker, beginning/end preservation, explicit omission counts, correct task-order
+audit references, and unchanged authority and verification. The real-CLI
+regression failed before the fix (no integrator request) and passed afterward,
+checking all original reports against their referenced audit events. Boundary
+tests cover unchanged empty/short/exact-limit reports, multibyte cuts, forged
+metadata kept inside text, and worst-case JSON escaping across 12 reports.
+
+Unlike Hermes, this uses fixed byte bounds and existing audit storage rather
+than dynamic parent-token estimates, new spill files or a retrieval capability.
+No live-model quality improvement is claimed. Omitted details may still matter;
+models must re-inspect candidate files, and the fixed verifier remains decisive.
+See the orchestration contract for exact fields and remaining limits.
+
+Follow-up validation: `cargo test --locked` passed 252 tests (0 failed, 2
+ignored); formatting, Clippy with warnings denied, and release build passed.
+Floorplan was refreshed: 64/64 files described, none unassigned, no reported
+health findings. Tests used deterministic local HTTP fixtures, not live models.

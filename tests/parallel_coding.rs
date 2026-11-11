@@ -570,3 +570,62 @@ fn invalid_handoff_rejects_the_whole_plan_before_admission() {
         }
     }
 }
+
+#[test]
+fn large_worker_reports_are_bounded_without_losing_audit_evidence() {
+    let mut run = Run::new(false);
+    run.next().text(
+        &json!({"tasks":[
+            {"task":"P0", "write_paths":["a.txt"]},
+            {"task":"P1", "write_paths":["b.txt"]},
+            {"task":"P2", "write_paths":["c.txt"]}
+        ]})
+        .to_string(),
+    );
+    let mut originals = vec![String::new(); 3];
+    for _ in 0..3 {
+        let request = run.next();
+        let prompt = request.body["messages"][1]["content"].as_str().unwrap();
+        let i = (0..3)
+            .find(|i| prompt.contains(&format!("task: P{i}")))
+            .unwrap();
+        let text = format!("START{i} {} END{i}", "界".repeat(500_000));
+        originals[i] = text.clone();
+        request.text(&text);
+    }
+    let integrator = run.next();
+    let prompt = integrator.body["messages"][1]["content"].as_str().unwrap();
+    assert!(integrator.body.to_string().len() < 100_000);
+    let mut handoffs = Vec::new();
+    for (i, original) in originals.iter().enumerate() {
+        let marker = format!("Untrusted worker {} report:\n", i + 1);
+        let line = prompt
+            .split_once(&marker)
+            .unwrap()
+            .1
+            .lines()
+            .next()
+            .unwrap();
+        let handoff: Value = serde_json::from_str(line).unwrap();
+        let text = handoff["text"].as_str().unwrap();
+        assert!(text.starts_with(&format!("START{i}")));
+        assert!(text.ends_with(&format!("END{i}")));
+        assert!(text.len() <= 8192);
+        assert_eq!(handoff["index"], i);
+        assert_eq!(handoff["original_bytes"], original.len());
+        assert!(handoff["omitted_bytes"].as_u64().unwrap() > 1_000_000);
+        handoffs.push(handoff);
+    }
+    integrator.text("Reports collected; no verification claimed.");
+    let (report, events, _) = run.finish();
+    assert_eq!(report["status"], "unverified");
+    for (i, handoff) in handoffs.iter().enumerate() {
+        let event = events
+            .iter()
+            .find(|e| e["id"] == handoff["audit_event"])
+            .unwrap();
+        assert_eq!(event["kind"], "worker");
+        assert_eq!(event["data"]["index"], i);
+        assert_eq!(event["data"]["result"]["text"], originals[i]);
+    }
+}

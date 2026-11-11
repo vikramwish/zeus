@@ -1,6 +1,43 @@
 //! Conservative, local, model-facing presentation; not reward evidence.
 use serde_json::Value;
 
+/// Model-facing projection only. The caller must durably retain the full result
+/// before handing us its audit ID. Keep both opening findings and closing caveats.
+pub fn worker_handoff(index: usize, audit_event: &str, text: &str, tool_calls: usize) -> Value {
+    const LIMIT: usize = 8192;
+    let (shown, omitted) = if text.len() <= LIMIT {
+        (text.to_owned(), 0)
+    } else {
+        let mut head = LIMIT * 3 / 4;
+        let mut tail = text.len() - LIMIT / 4;
+        while !text.is_char_boundary(head) {
+            head -= 1;
+        }
+        while !text.is_char_boundary(tail) {
+            tail += 1;
+        }
+        // Separate fragments structurally with an explicit omission marker.
+        // Reserve its bytes inside the same limit.
+        let marker = "\n[zeus: middle omitted]\n";
+        head -= marker.len();
+        while !text.is_char_boundary(head) {
+            head -= 1;
+        }
+        (
+            format!("{}{}{}", &text[..head], marker, &text[tail..]),
+            tail - head,
+        )
+    };
+    serde_json::json!({
+        "index": index,
+        "audit_event": audit_event,
+        "tool_calls": tool_calls,
+        "original_bytes": text.len(),
+        "omitted_bytes": omitted,
+        "text": shown,
+    })
+}
+
 /// Clone a completed successful verifier result and compact strictly recognized
 /// libtest stdout. Call only AFTER storing the raw audit evidence. All other
 /// fields (including stderr) and all unsupported/malformed output are unchanged.

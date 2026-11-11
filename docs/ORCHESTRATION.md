@@ -169,3 +169,25 @@ whole-batch validation, denied-capability recovery and budget regression proofs.
 
 These tests establish orchestration/protocol behavior, not model quality or
 live-provider compatibility.
+
+### Bounded worker result handoffs
+
+After every admitted worker joins successfully, the runtime persists each full
+`AgentResult` in a `worker` audit event, then sends the integrator a JSON
+projection in task order: zero-based `index`, `audit_event`, `tool_calls`,
+`original_bytes`, `omitted_bytes`, and `text`. These are reports, not verification
+or permission grants. Worker errors still stop integration.
+
+Each `text` is limited to 8192 UTF-8 bytes. Longer text keeps approximately three
+quarters from the beginning and one quarter from the end, with a middle-omission
+marker inside that limit. Cuts respect character boundaries; `omitted_bytes`
+counts removed original bytes, excluding the inserted marker. Short and empty
+reports are unchanged. The planner admits at most 12 workers, bounding retained
+report text to 96 KiB (JSON escaping adds overhead). Existing total model-context
+limits still apply to the entire prompt, including the original task.
+
+The full audit is retained for review; audit IDs do not grant candidate tools
+access to audit files. The integrator must inspect candidate files to resolve
+omitted details. This deliberately provides no new retrieval tool, model-based
+summarizer, partial-success recovery, or adaptive token budget. Truncation can
+omit useful findings; the fixed external verifier remains the acceptance gate.
