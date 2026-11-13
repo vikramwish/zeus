@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/vikramwish/zeus/actions/workflows/ci.yml"><img src="https://github.com/vikramwish/zeus/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/vikramwish/zeus/actions/workflows/pages.yml"><img src="https://img.shields.io/badge/workbench-GitHub_Pages-28527D" alt="Interactive Research Workbench" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-156654" alt="License: MIT" /></a>
 </p>
 
@@ -18,7 +19,8 @@
   <a href="#the-execution-model">Execution model</a> ·
   <a href="docs/ORCHESTRATION.md">Orchestration</a> ·
   <a href="ARCHITECTURE.md">Architecture</a> ·
-  <a href="SECURITY.md">Security</a>
+  <a href="SECURITY.md">Security</a> ·
+  <a href="research/REPORT.md">Technical Report TR-01</a>
 </p>
 
 ---
@@ -205,3 +207,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for source-inspection notes and component
 ## Experimental decision scoring
 
 [Zeus Judge](docs/JUDGE.md) records typed, local shadow predictions for direct and parallel execution. It never controls routing. Enable `"shadow_judge": {}` to collect pre-run features and observed outcomes; optionally supply an offline linear-model artifact. No trained weights or calibrated accuracy claims are shipped.
+
+## Technical Report TR-01 & Interactive Workbench
+
+- **Live interactive lab (GitHub Pages):** [https://vikramwish.github.io/zeus/research/](https://vikramwish.github.io/zeus/research/) (`research/index.html`) — simulate work-conserving FIFO dispatch vs. batch barriers, probe fail-closed path-scope invariants, test verifier-gated UCB1 routing + Zeus Judge's 8 abstention gates, and filter all 14 scrubbed `kv.py` field trials.
+- **Technical report:** [research/REPORT.md](research/REPORT.md) and compiled LaTeX PDF [research/paper/zeus-report.pdf](research/paper/zeus-report.pdf).
+- **Reproducibility scripts:** Run `python3 research/scripts/build_figures.py --check` to verify all vector plates in `docs/figures/` stay synchronized with `src/`, `tests/`, and `research/data/field_runs.json`.

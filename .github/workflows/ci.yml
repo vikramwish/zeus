@@ -50,3 +50,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run tests with Seatbelt sandbox
         run: cargo test --locked
+
+  research:
+    name: Research figures & Playwright workbench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check SVG figures against Rust metrics & trials
+        run: python3 research/scripts/build_figures.py --check
+      - name: Verify interactive workbench (1440px & 390px)
+        run: |
+          python3 -m pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium
+          python3 research/scripts/verify_workbench.py
