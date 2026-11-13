@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zeus Technical Report TR-01 · Interactive Systems Workbench</title>
+    <meta
+      name="description"
+      content="Technical report and interactive systems workbench for Zeus: work-conserving FIFO dispatch, fail-closed file-scope isolation, Seatbelt/bubblewrap sandboxing, UCB1 routing, and Zeus Judge."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-workbench">Skip to interactive systems workbench</a>
+
+    <!-- Component: <MastheadHero> -->
+    <header class="masthead" id="masthead-hero">
+      <div class="topbar">
+        <div class="container topbar-inner">
+          <a class="brand" href="#masthead-hero">
+            <span class="brand-mark" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M9.5 1.2L3.2 8.8H7.8L6.5 14.8L12.8 7.2H8.2L9.5 1.2Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </span>
+            <span>ZEUS · TECHNICAL REPORT TR-01</span>
+          </a>
+          <nav class="topnav" aria-label="Primary links">
+            <a href="./REPORT.md">REPORT.md</a>
+            <a href="./paper/zeus-report.pdf">PDF Report</a>
+            <a href="./data/field_runs.json">Trial Dataset (JSON)</a>
+            <a href="https://github.com/vikramwish/zeus" rel="noopener noreferrer">GitHub Source</a>
+          </nav>
+        </div>
+      </div>
+
+      <div class="container hero">
+        <div>
+          <div class="hero-kicker">
+            <span class="hero-tag">TR-01 Systems Monograph</span>
+            <span>Dual-Plane Rust Agent Runtime</span>
+            <span>macOS Seatbelt + Linux Bubblewrap</span>
+          </div>
+          <h1>Bounded Concurrent Coding Agents Under External Verification</h1>
+          <p class="hero-lead">
+            Zeus separates untrusted probabilistic inference from deterministic host control:
+            snapshot isolation, pre-admission write-scope graphs, sandboxed verification,
+            infrastructure-isolated UCB1 routing, and fail-closed shadow outcome scoring.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#scheduler-lab">Explore Interactive Labs</a>
+            <a class="btn btn-dark" href="./paper/zeus-report.pdf">Download TR-01 PDF</a>
+            <a class="btn btn-dark" href="./REPORT.md">Read Markdown Monograph</a>
+          </div>
+        </div>
+
+        <aside class="proof-card" aria-label="Baseline verification telemetry">
+          <div class="proof-card-head">
+            <span id="meta-commit">HEAD · 9dbba43</span>
+            <span class="proof-status">ALL GATES DETERMINISTIC</span>
+          </div>
+          <div class="proof-metrics">
+            <div class="proof-stat">
+              <span class="proof-value" id="meta-loc">7,245 LOC</span>
+              <span class="proof-label">Core Rust runtime (18 modules)</span>
+            </div>
+            <div class="proof-stat">
+              <span class="proof-value" id="meta-tests">266 / 46 suites</span>
+              <span class="proof-label">Scripted HTTP &amp; OS sandbox checks</span>
+            </div>
+            <div class="proof-stat">
+              <span class="proof-value">14 trials</span>
+              <span class="proof-label">Exploratory kv.py (Qwen 3.5-9B)</span>
+            </div>
+            <div class="proof-stat">
+              <span class="proof-value">0 corrupted</span>
+              <span class="proof-label">Policy rewards on infra faults</span>
+            </div>
+          </div>
+          <p class="proof-footnote">
+            Claims distinguish deterministic host invariants from exploratory 9B fixture trials.
+            No held-out generalization claim is asserted without paired benchmarks.
+          </p>
+        </aside>
+      </div>
+    </header>
+
+    <nav class="section-strip" aria-label="Workbench sections">
+      <div class="container section-strip-inner">
+        <a class="strip-link" href="#scheduler-lab">01 · FIFO Scheduler</a>
+        <a class="strip-link" href="#scope-lab">02 · Scope Validator</a>
+        <a class="strip-link" href="#router-judge-lab">03 · UCB1 &amp; Judge</a>
+        <a class="strip-link" href="#trials-explorer">04 · Field Trials (T01–T14)</a>
+        <a class="strip-link" href="#plates-gallery">05 · Figure Plates</a>
+      </div>
+    </nav>
+
+    <main id="main-workbench" class="container">
+      <!-- Component: <FifoSchedulerLab> -->
+      <section class="lab-section" id="scheduler-lab" aria-labelledby="sched-heading">
+        <div class="section-header">
+          <div>
+            <span class="section-num">Lab 01 · Concurrency &amp; Admission Halt</span>
+            <h2 id="sched-heading">Work-Conserving FIFO vs Synchronous Batch Barriers</h2>
+          </div>
+          <span class="section-cite">src/agent.rs::run_tasks · k in 1..=3</span>
+        </div>
+
+        <div class="workbench">
+          <div class="panel-control">
+            <p class="prose-note">
+              Zeus admits workers from a shared FIFO queue up to <code>k &lt;= 3</code> concurrent
+              slots. When a task finishes, any idle worker immediately pulls the next task—or halts
+              new queue admissions immediately if an active task fails while running workers join.
+            </p>
+
+            <div class="control-group">
+              <div class="control-label">
+                <span>Worker Concurrency (k)</span>
+                <span class="control-hint">Bounded in runtime</span>
+              </div>
+              <div class="seg-group" role="group" aria-label="Worker concurrency k">
+                <button type="button" class="seg-btn" data-sched-k="1" aria-pressed="false">k = 1</button>
+                <button type="button" class="seg-btn" data-sched-k="2" aria-pressed="false">k = 2</button>
+                <button type="button" class="seg-btn" data-sched-k="3" aria-pressed="true">k = 3 (Default)</button>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <div class="control-label">
+                <span>Workload Presets</span>
+              </div>
+              <div class="preset-row">
+                <button type="button" class="preset-btn" data-sched-preset="skewed" aria-pressed="true">Asymmetric Skew</button>
+                <button type="button" class="preset-btn" data-sched-preset="tail" aria-pressed="false">Long-Tail Worker</button>
+                <button type="button" class="preset-btn" data-sched-preset="uniform" aria-pressed="false">Uniform Waves</button>
+                <button type="button" class="preset-btn" data-sched-preset="failstop" aria-pressed="false">Early Fail Halt</button>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="sched-durations">
+                <span>Task Durations (comma-separated)</span>
+                <span class="control-hint">1..12 coding tasks</span>
+              </label>
+              <input
+                id="sched-durations"
+                class="input-field"
+                type="text"
+                value="9, 2, 3, 2, 7, 1, 4"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="control-group">
+              <label class="check-row">
+                <input id="sched-fail-check" type="checkbox" />
+                <span>Simulate mid-run worker error (admission halt)</span>
+              </label>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="sched-fail-index">
+                <span>Failing Task Index (1-based)</span>
+                <span class="control-hint">Halts remaining queue</span>
+              </label>
+              <input id="sched-fail-index" class="input-field" type="number" min="1" max="12" value="2" />
+            </div>
+
+            <div id="sched-error" class="status-banner status-banner-fail" role="alert" hidden></div>
+          </div>
+
+          <div class="plate">
+            <div class="kpi-strip">
+              <div class="kpi-box">
+                <strong id="fifo-makespan">—</strong>
+                <span>Zeus FIFO Makespan</span>
+              </div>
+              <div class="kpi-box">
+                <strong id="barrier-makespan">—</strong>
+                <span>Batch Barrier Makespan</span>
+              </div>
+              <div class="kpi-box">
+                <strong id="sched-delta">—</strong>
+                <span>Makespan Delta vs Barrier</span>
+              </div>
+              <div class="kpi-box">
+                <strong id="graham-bound">—</strong>
+                <span>Graham Upper Bound</span>
+              </div>
+            </div>
+
+            <div class="gantt-grid">
+              <div class="gantt-panel">
+                <div class="gantt-title">
+                  <span>Work-Conserving FIFO Queue (<code>run_tasks</code>)</span>
+                  <span class="pill pill-pass" id="fifo-badge">—</span>
+                </div>
+                <div class="gantt-scroll" id="fifo-gantt"></div>
+              </div>
+
+              <div class="gantt-panel">
+                <div class="gantt-title">
+                  <span>Synchronous Wave Barrier (<code>chunks(k)</code>)</span>
+                  <span class="pill pill-info" id="barrier-badge">—</span>
+                </div>
+                <div class="gantt-scroll" id="barrier-gantt"></div>
+              </div>
+            </div>
+
+            <p id="sched-live" class="prose-note" style="margin:0.85rem 0 0;" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Component: <ScopeValidatorLab> -->
+      <section class="lab-section" id="scope-lab" aria-labelledby="scope-heading">
+        <div class="section-header">
+          <div>
+            <span class="section-num">Lab 02 · Theorem 1 Authority Isolation</span>
+            <h2 id="scope-heading">Pre-Admission Write-Scope Validator &amp; Handoff Bounds</h2>
+          </div>
+          <span class="section-cite">src/runtime.rs:934–1035 · src/output.rs</span>
+        </div>
+
+        <div class="workbench">
+          <div class="panel-control">
+            <p class="prose-note">
+              Before spawning any parallel worker, Zeus deserializes the untrusted planner JSON and
+              enforces canonical ASCII exact-file paths, user autonomy containment, lowercased disjoint
+              ancestors, and the 8,192-byte context limit.
+            </p>
+
+            <div class="control-group">
+              <div class="control-label">
+                <span>Admission Test Cases</span>
+              </div>
+              <div class="preset-row">
+                <button type="button" class="preset-btn" data-scope-preset="disjoint" aria-pressed="true">Disjoint Valid</button>
+                <button type="button" class="preset-btn" data-scope-preset="caseAlias" aria-pressed="false">Case Alias</button>
+                <button type="button" class="preset-btn" data-scope-preset="ancestor" aria-pressed="false">Ancestor Overlap</button>
+                <button type="button" class="preset-btn" data-scope-preset="traversal" aria-pressed="false">Traversal</button>
+                <button type="button" class="preset-btn" data-scope-preset="handoff" aria-pressed="false">Handoff &gt;8 KiB</button>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="scope-allowlist">
+                <span>User <code>autonomy.write_paths</code></span>
+                <span class="control-hint">Blank = unrestricted</span>
+              </label>
+              <textarea id="scope-allowlist" class="textarea-field" style="min-height:76px;">src/a.rs
+src/b.rs
+src/c.rs</textarea>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="scope-json">
+                <span>Untrusted Planner Output JSON</span>
+              </label>
+              <textarea id="scope-json" class="textarea-field">{
+  "tasks": [
+    {
+      "task": "Add parser validation",
+      "write_paths": ["src/a.rs"],
+      "context": "Line 14..42 inspected"
+    },
+    {
+      "task": "Update formatter helper",
+      "write_paths": ["src/b.rs"]
+    },
+    {
+      "task": "Add unit tests for parser",
+      "write_paths": ["src/c.rs"]
+    }
+  ]
+}</textarea>
+            </div>
+          </div>
+
+          <div class="plate">
+            <div id="scope-verdict" class="status-banner status-banner-pass" role="status" aria-live="polite">
+              Checking plan invariants…
+            </div>
+
+            <div id="scope-checks" class="invariant-list"></div>
+
+            <div class="handoff-meter">
+              <div class="control-label">
+                <span>Worker Context &amp; Output Cap (<code>worker_handoff</code>)</span>
+                <span id="handoff-bytes" class="mono">0 / 8,192 UTF-8 B</span>
+              </div>
+              <div class="meter-track">
+                <div id="handoff-fill" class="meter-fill" style="width:0%"></div>
+              </div>
+              <p id="handoff-preview" class="control-hint" style="margin:0.45rem 0 0;"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Component: <RouterJudgeSandbox> -->
+      <section class="lab-section" id="router-judge-lab" aria-labelledby="router-heading">
+        <div class="section-header">
+          <div>
+            <span class="section-num">Lab 03 · Adaptive Control &amp; Shadow Abstention</span>
+            <h2 id="router-heading">UCB1 Strategy Bandit &amp; Zeus Judge 8-Gate Sandbox</h2>
+          </div>
+          <span class="section-cite">src/policy.rs · src/judge.rs</span>
+        </div>
+
+        <div class="dual-cards">
+          <!-- Sub-panel A: UCB1 Bandit -->
+          <div class="subplate">
+            <div class="subplate-head">
+              <h3>UCB1 Strategy Router</h3>
+              <span class="pill pill-info">Direct-first tie-break</span>
+            </div>
+            <p class="prose-note">
+              Selects <code>mean + sqrt(2 * ln(N) / n)</code> after exploring <code>Direct</code>
+              then <code>Parallel</code>. Infrastructure faults log zero reward changes.
+            </p>
+
+            <div id="ucb-next-banner" class="status-banner" aria-live="polite">
+              Loading policy state…
+            </div>
+
+            <div class="ucb-grid">
+              <div class="arm-card" id="ucb-card-direct">
+                <div class="arm-card-title">
+                  <span>Direct</span>
+                  <span class="mono">arm 0</span>
+                </div>
+                <div class="arm-score" id="ucb-score-direct">—</div>
+                <div class="control-hint" id="ucb-stats-direct">—</div>
+              </div>
+
+              <div class="arm-card" id="ucb-card-parallel">
+                <div class="arm-card-title">
+                  <span>Parallel</span>
+                  <span class="mono">arm 1</span>
+                </div>
+                <div class="arm-score" id="ucb-score-parallel">—</div>
+                <div class="control-hint" id="ucb-stats-parallel">—</div>
+              </div>
+            </div>
+
+            <div class="preset-row" style="margin-bottom:0.85rem;">
+              <button type="button" class="btn btn-primary" id="ucb-btn-pass">+ Verified Pass</button>
+              <button type="button" class="btn" id="ucb-btn-fail">+ Verified Fail</button>
+              <button type="button" class="btn" id="ucb-btn-infra">+ Infrastructure Error</button>
+              <button type="button" class="btn btn-subtle" id="ucb-btn-reset">Reset (0, 0)</button>
+            </div>
+
+            <pre id="ucb-log" class="log-box" aria-label="UCB1 reward audit trace"></pre>
+          </div>
+
+          <!-- Sub-panel B: Zeus Judge -->
+          <div class="subplate">
+            <div class="subplate-head">
+              <h3>Zeus Judge (Shadow-Only)</h3>
+              <span class="pill pill-warn">8 Fail-Closed Gates</span>
+            </div>
+            <p class="prose-note">
+              Evaluates independent linear heads on <code>job_limits_v1</code> features before
+              worker launch. Never overrides UCB or explicit strategy.
+            </p>
+
+            <div id="judge-decision" class="status-banner" aria-live="polite">
+              Evaluating gates…
+            </div>
+
+            <div class="feature-grid">
+              <label class="control-group" style="margin:0;">
+                <span class="control-label"><span>task_bytes (/32768)</span></span>
+                <input id="j-task-bytes" class="input-field" type="number" min="0" max="65536" step="256" value="2048" />
+              </label>
+              <label class="control-group" style="margin:0;">
+                <span class="control-label"><span>max_turns (/32)</span></span>
+                <input id="j-turns" class="input-field" type="number" min="1" max="64" value="16" />
+              </label>
+              <label class="control-group" style="margin:0;">
+                <span class="control-label"><span>max_repairs (/8)</span></span>
+                <input id="j-repairs" class="input-field" type="number" min="0" max="16" value="2" />
+              </label>
+              <label class="control-group" style="margin:0;">
+                <span class="control-label"><span>training_samples (&gt;=30)</span></span>
+                <input id="j-samples" class="input-field" type="number" min="0" max="500" value="42" />
+              </label>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="j-gap">
+                <span>Success Logit Margin Offset (<code>Δlogit</code>)</span>
+                <span class="control-hint">Margin threshold 0.05</span>
+              </label>
+              <input id="j-gap" class="range-field" type="range" min="-0.8" max="0.8" step="0.02" value="0.34" />
+            </div>
+
+            <div class="preset-row" style="margin-bottom:0.65rem;">
+              <label class="check-row"><input id="j-model-present" type="checkbox" checked /><span>Artifact present</span></label>
+              <label class="check-row"><input id="j-valid-schema" type="checkbox" checked /><span>Valid schema</span></label>
+              <label class="check-row"><input id="j-domain-match" type="checkbox" checked /><span>SHA-256 domain match</span></label>
+              <label class="check-row"><input id="j-verifier" type="checkbox" checked /><span>Verifier configured</span></label>
+              <label class="check-row"><input id="j-cost-bounds" type="checkbox" checked /><span>Cost heads [0,30]</span></label>
+            </div>
+
+            <div id="judge-probs" class="control-hint mono" style="margin-bottom:0.3rem;"></div>
+            <div id="judge-features" class="control-hint mono" style="margin-bottom:0.55rem;"></div>
+            <div id="judge-gates" class="gate-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Component: <FieldTrialsExplorer> -->
+      <section class="lab-section" id="trials-explorer" aria-labelledby="trials-heading">
+        <div class="section-header">
+          <div>
+            <span class="section-num">Lab 04 · Empirical kv.py Telemetry</span>
+            <h2 id="trials-heading">14 Scrubbed Exploratory Trials (Qwen 3.5-9B)</h2>
+          </div>
+          <span class="pill pill-info" id="trials-count-pill">Loading dataset…</span>
+        </div>
+
+        <p class="prose-note">
+          Extracted by <code>research/scripts/extract_field_runs.py</code> into
+          <a href="./data/field_runs.json"><code>research/data/field_runs.json</code></a>. Notice
+          every transport and planner-format error (<code>T01–T02, T05, T07–T11, T14</code>)
+          recorded <code>reward_recorded = false</code>, leaving UCB1 weights uncorrupted.
+        </p>
+
+        <div class="filter-toolbar" role="search" aria-label="Filter exploratory trials">
+          <div>
+            <label class="control-label" for="trial-search"><span>Search error, commit, or trial</span></label>
+            <input id="trial-search" class="input-field" type="search" placeholder="e.g. planner-format, d121e6b, T12" />
+          </div>
+          <div>
+            <label class="control-label" for="trial-campaign"><span>Campaign</span></label>
+            <select id="trial-campaign" class="select-field">
+              <option value="all">All campaigns</option>
+              <option value="smoke">smoke (T01–T03)</option>
+              <option value="model-test">model-test (T04)</option>
+              <option value="acceptance">acceptance (T05–T12)</option>
+              <option value="router-training">router-training (T13–T14)</option>
+            </select>
+          </div>
+          <div>
+            <label class="control-label" for="trial-strategy"><span>Strategy</span></label>
+            <select id="trial-strategy" class="select-field">
+              <option value="all">All strategies</option>
+              <option value="direct">direct</option>
+              <option value="parallel">parallel</option>
+            </select>
+          </div>
+          <div>
+            <label class="control-label" for="trial-status"><span>Outcome Status</span></label>
+            <select id="trial-status" class="select-field">
+              <option value="all">All outcomes</option>
+              <option value="verified">verified</option>
+              <option value="infrastructure_error">infrastructure_error</option>
+              <option value="incomplete">incomplete</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="trials-table">
+            <thead>
+              <tr>
+                <th>Trial</th>
+                <th>Campaign</th>
+                <th>Strategy</th>
+                <th>Status</th>
+                <th>Wall Time</th>
+                <th>Verifier Checks</th>
+                <th>Failure Class</th>
+                <th>Fix Commit</th>
+                <th>UCB Reward</th>
+              </tr>
+            </thead>
+            <tbody id="trials-tbody"></tbody>
+          </table>
+
+          <div id="trials-empty" class="empty-state" hidden>
+            <p style="margin:0 0 0.75rem;">No exploratory trials match the selected filter combination.</p>
+            <button type="button" class="btn btn-subtle" id="trials-clear-btn">Clear Filters</button>
+          </div>
+        </div>
+
+        <div id="trial-detail" class="trial-detail" hidden></div>
+      </section>
+
+      <!-- Component: <FigurePlatesGallery> -->
+      <section class="lab-section" id="plates-gallery" aria-labelledby="plates-heading">
+        <div class="section-header">
+          <div>
+            <span class="section-num">Lab 05 · Monograph Plates</span>
+            <h2 id="plates-heading">Generated Vector Plates (Verified via <code>build_figures.py --check</code>)</h2>
+          </div>
+          <a id="plate-svg-link" class="btn btn-subtle" href="../docs/figures/fig1-system.svg">Open Raw SVG</a>
+        </div>
+
+        <div id="plate-tabs" class="plate-tabs" role="tablist" aria-label="Technical figure plates"></div>
+
+        <figure class="figure-frame" style="margin:0;">
+          <img
+            id="plate-image"
+            src="../docs/figures/fig1-system.svg"
+            alt="Dual-Plane Control Architecture and Trust Boundaries"
+          />
+          <figcaption class="figure-caption">
+            <strong id="plate-title">Dual-Plane Control Architecture &amp; Trust Boundaries</strong>
+            <span id="plate-caption"></span>
+          </figcaption>
+        </figure>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <span>Zeus Technical Report TR-01 · Rust 1.85+ · MIT License</span>
+        <span>
+          <a href="./REPORT.md">REPORT.md</a> ·
+          <a href="./paper/zeus-report.pdf">zeus-report.pdf</a> ·
+          <a href="./data/field_runs.json">field_runs.json</a> ·
+          <a href="https://github.com/vikramwish/zeus" rel="noopener noreferrer">vikramwish/zeus</a>
+        </span>
+      </div>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" role="img" aria-labelledby="t2 d2">
+<title id="t2">Figure 2. Work-Conserving FIFO Admission vs. Batch Barriers</title>
+<desc id="d2">Gantt simulation showing 29.4% makespan reduction and 68.2% idle waste elimination under bounded 3-worker concurrency</desc>
+<defs><marker id="arrow-ink" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#15181E"/></marker><marker id="arrow-bolt" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#D93B21"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#156654"/></marker><marker id="arrow-ochre" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#B5760D"/></marker><marker id="arrow-slate" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#28527D"/></marker><marker id="arrow-muted" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#7D838E"/></marker><marker id="arrow-cream" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#ECEFF4"/></marker><pattern id="grid-light" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#EAE4D5" stroke-width="0.8"/></pattern><pattern id="hatch-amber" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#B5760D" stroke-opacity="0.28" stroke-width="2"/></pattern><pattern id="hatch-model" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="10" stroke="#D4CCBA" stroke-opacity="0.35" stroke-width="1.4"/></pattern><filter id="shadow-card" x="-4%" y="-4%" width="108%" height="112%" filterUnits="userSpaceOnUse"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#15181E" flood-opacity="0.06"/></filter><filter id="shadow-bolt" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#D93B21" flood-opacity="0.45"/></filter></defs>
+<rect x="0.0" y="0.0" width="1200.0" height="660.0" rx="0" fill="#F7F4EC" stroke="none" stroke-width="0" />
+<rect x="10.0" y="10.0" width="1180.0" height="640.0" rx="10" fill="none" stroke="#D4CCBA" stroke-width="1" />
+<rect x="36.0" y="30.0" width="64.0" height="24.0" rx="4" fill="#D93B21" stroke="none" stroke-width="0" />
+<text x="68.0" y="46.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="1.4" >FIG. 2</text>
+<text x="114.0" y="49.0" font-family="'Iowan Old Style', 'Charter', 'Palatino Linotype', Palatino, Georgia, serif" font-size="21.5" fill="#15181E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0" >Work-Conserving FIFO Admission vs. Batch Barriers</text>
+<text x="1164.0" y="46.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="1.3" >ZEUS · TECHNICAL REPORT TR-01</text>
+<line x1="36.0" y1="66.0" x2="1164.0" y2="66.0" stroke="#15181E" stroke-width="1.2" />
+<line x1="36.0" y1="69.5" x2="1164.0" y2="69.5" stroke="#D4CCBA" stroke-width="0.7" />
+<rect x="36.0" y="92.0" width="1128.0" height="206.0" rx="8" fill="#FFFFFF" stroke="#D4CCBA" stroke-width="1" filter="url(#shadow-card)"/>
+<text x="56.0" y="124.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#15181E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0" >(a) Synchronous Batch Barrier</text>
+<rect x="844.0" y="108.0" width="148.0" height="26.0" rx="13.0" fill="#ECE7DA" stroke="#D4CCBA" stroke-width="1" /><text x="918.0" y="124.7" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.6" >MAKESPAN: 17 u</text>
+<rect x="1004.0" y="108.0" width="142.0" height="26.0" rx="13.0" fill="#FCF5E8" stroke="#B5760D" stroke-width="1" /><text x="1075.0" y="124.7" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.6" >IDLE: 22 slot-u</text>
+<text x="170.0" y="172.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#525760" font-weight="bold" text-anchor="end" font-style="normal" letter-spacing="0.4" >Worker 1</text>
+<rect x="188.0" y="150.0" width="828.0" height="34.0" rx="4" fill="#FAF9F6" stroke="#EAE4D5" stroke-width="0.8" />
+<rect x="188.0" y="150.0" width="782.0" height="34.0" rx="4" fill="url(#hatch-amber)" stroke="none" stroke-width="0" />
+<text x="170.0" y="215.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#525760" font-weight="bold" text-anchor="end" font-style="normal" letter-spacing="0.4" >Worker 2</text>
+<rect x="188.0" y="193.0" width="828.0" height="34.0" rx="4" fill="#FAF9F6" stroke="#EAE4D5" stroke-width="0.8" />
+<rect x="188.0" y="193.0" width="782.0" height="34.0" rx="4" fill="url(#hatch-amber)" stroke="none" stroke-width="0" />
+<text x="170.0" y="258.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#525760" font-weight="bold" text-anchor="end" font-style="normal" letter-spacing="0.4" >Worker 3</text>
+<rect x="188.0" y="236.0" width="828.0" height="34.0" rx="4" fill="#FAF9F6" stroke="#EAE4D5" stroke-width="0.8" />
+<rect x="188.0" y="236.0" width="782.0" height="34.0" rx="4" fill="url(#hatch-amber)" stroke="none" stroke-width="0" />
+<rect x="189.5" y="151.0" width="365.0" height="32.0" rx="5" fill="#15181E" stroke="#15181E" stroke-width="1.3" />
+<text x="372.0" y="171.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T0 (8u)</text>
+<rect x="189.5" y="194.0" width="135.0" height="32.0" rx="5" fill="#FFFFFF" stroke="#525760" stroke-width="1.3" />
+<text x="257.0" y="214.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T1 (3u)</text>
+<rect x="189.5" y="237.0" width="181.0" height="32.0" rx="5" fill="#FFFFFF" stroke="#525760" stroke-width="1.3" />
+<text x="280.0" y="257.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T2 (4u)</text>
+<rect x="557.5" y="151.0" width="89.0" height="32.0" rx="5" fill="#FFFFFF" stroke="#525760" stroke-width="1.3" />
+<text x="602.0" y="171.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T3 (2u)</text>
+<rect x="557.5" y="194.0" width="227.0" height="32.0" rx="5" fill="#FFFFFF" stroke="#525760" stroke-width="1.3" />
+<text x="671.0" y="214.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T4 (5u)</text>
+<rect x="557.5" y="237.0" width="135.0" height="32.0" rx="5" fill="#FFFFFF" stroke="#525760" stroke-width="1.3" />
+<text x="625.0" y="257.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T5 (3u)</text>
+<rect x="787.5" y="151.0" width="181.0" height="32.0" rx="5" fill="#FFFFFF" stroke="#525760" stroke-width="1.3" />
+<text x="878.0" y="171.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T6 (4u)</text>
+<line x1="556.0" y1="142.0" x2="556.0" y2="277.0" stroke="#D93B21" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="556.0" y="138.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.4" >barrier</text>
+<line x1="786.0" y1="142.0" x2="786.0" y2="277.0" stroke="#D93B21" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="786.0" y="138.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.4" >barrier</text>
+<line x1="188.0" y1="285.0" x2="1016.0" y2="285.0" stroke="#D4CCBA" stroke-width="1" />
+<line x1="188.0" y1="285.0" x2="188.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="188.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >0</text>
+<line x1="280.0" y1="285.0" x2="280.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="280.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >2</text>
+<line x1="372.0" y1="285.0" x2="372.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="372.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >4</text>
+<line x1="464.0" y1="285.0" x2="464.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="464.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >6</text>
+<line x1="556.0" y1="285.0" x2="556.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="556.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >8</text>
+<line x1="648.0" y1="285.0" x2="648.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="648.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >10</text>
+<line x1="740.0" y1="285.0" x2="740.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="740.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >12</text>
+<line x1="832.0" y1="285.0" x2="832.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="832.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >14</text>
+<line x1="924.0" y1="285.0" x2="924.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="924.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >16</text>
+<line x1="1016.0" y1="285.0" x2="1016.0" y2="290.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="1016.0" y="303.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >18</text>
+<rect x="36.0" y="322.0" width="1128.0" height="206.0" rx="8" fill="#FFFFFF" stroke="#D4CCBA" stroke-width="1" filter="url(#shadow-card)"/>
+<text x="56.0" y="354.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#15181E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0" >(b) Zeus Work-Conserving FIFO (agent::run_tasks)</text>
+<rect x="816.0" y="338.0" width="176.0" height="26.0" rx="13.0" fill="#EEF6F3" stroke="#156654" stroke-width="1" /><text x="904.0" y="354.7" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#156654" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.6" >MAKESPAN: 12 u (-29%)</text>
+<rect x="1004.0" y="338.0" width="142.0" height="26.0" rx="13.0" fill="#EEF6F3" stroke="#156654" stroke-width="1" /><text x="1075.0" y="354.7" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#156654" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.6" >IDLE: 7 slot-u</text>
+<text x="170.0" y="402.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#525760" font-weight="bold" text-anchor="end" font-style="normal" letter-spacing="0.4" >Worker 1</text>
+<rect x="188.0" y="380.0" width="828.0" height="34.0" rx="4" fill="#FAF9F6" stroke="#EAE4D5" stroke-width="0.8" />
+<rect x="188.0" y="380.0" width="552.0" height="34.0" rx="4" fill="url(#hatch-amber)" stroke="none" stroke-width="0" />
+<text x="170.0" y="445.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#525760" font-weight="bold" text-anchor="end" font-style="normal" letter-spacing="0.4" >Worker 2</text>
+<rect x="188.0" y="423.0" width="828.0" height="34.0" rx="4" fill="#FAF9F6" stroke="#EAE4D5" stroke-width="0.8" />
+<rect x="188.0" y="423.0" width="552.0" height="34.0" rx="4" fill="url(#hatch-amber)" stroke="none" stroke-width="0" />
+<text x="170.0" y="488.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#525760" font-weight="bold" text-anchor="end" font-style="normal" letter-spacing="0.4" >Worker 3</text>
+<rect x="188.0" y="466.0" width="828.0" height="34.0" rx="4" fill="#FAF9F6" stroke="#EAE4D5" stroke-width="0.8" />
+<rect x="188.0" y="466.0" width="552.0" height="34.0" rx="4" fill="url(#hatch-amber)" stroke="none" stroke-width="0" />
+<rect x="189.5" y="381.0" width="365.0" height="32.0" rx="5" fill="#15181E" stroke="#15181E" stroke-width="1.3" />
+<text x="372.0" y="401.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T0 (8u)</text>
+<rect x="189.5" y="424.0" width="135.0" height="32.0" rx="5" fill="#28527D" stroke="#28527D" stroke-width="1.3" />
+<text x="257.0" y="444.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T1 (3u)</text>
+<rect x="189.5" y="467.0" width="181.0" height="32.0" rx="5" fill="#28527D" stroke="#28527D" stroke-width="1.3" />
+<text x="280.0" y="487.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T2 (4u)</text>
+<rect x="327.5" y="424.0" width="89.0" height="32.0" rx="5" fill="#28527D" stroke="#28527D" stroke-width="1.3" />
+<text x="372.0" y="444.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T3 (2u)</text>
+<rect x="373.5" y="467.0" width="227.0" height="32.0" rx="5" fill="#28527D" stroke="#28527D" stroke-width="1.3" />
+<text x="487.0" y="487.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T4 (5u)</text>
+<rect x="419.5" y="424.0" width="135.0" height="32.0" rx="5" fill="#28527D" stroke="#28527D" stroke-width="1.3" />
+<text x="487.0" y="444.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T5 (3u)</text>
+<rect x="557.5" y="381.0" width="181.0" height="32.0" rx="5" fill="#28527D" stroke="#28527D" stroke-width="1.3" />
+<text x="648.0" y="401.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >T6 (4u)</text>
+<line x1="188.0" y1="515.0" x2="1016.0" y2="515.0" stroke="#D4CCBA" stroke-width="1" />
+<line x1="188.0" y1="515.0" x2="188.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="188.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >0</text>
+<line x1="280.0" y1="515.0" x2="280.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="280.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >2</text>
+<line x1="372.0" y1="515.0" x2="372.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="372.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >4</text>
+<line x1="464.0" y1="515.0" x2="464.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="464.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >6</text>
+<line x1="556.0" y1="515.0" x2="556.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="556.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >8</text>
+<line x1="648.0" y1="515.0" x2="648.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="648.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >10</text>
+<line x1="740.0" y1="515.0" x2="740.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="740.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >12</text>
+<line x1="832.0" y1="515.0" x2="832.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="832.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >14</text>
+<line x1="924.0" y1="515.0" x2="924.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="924.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >16</text>
+<line x1="1016.0" y1="515.0" x2="1016.0" y2="520.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="1016.0" y="533.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="middle" font-style="normal" letter-spacing="0.4" >18</text>
+<rect x="36.0" y="548.0" width="1128.0" height="56.0" rx="8" fill="#FFFFFF" stroke="#D4CCBA" stroke-width="1" />
+<rect x="52.0" y="568.0" width="20.0" height="14.0" rx="2" fill="url(#hatch-amber)" stroke="#B5760D" stroke-width="0.8" />
+<text x="80.0" y="579.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#525760" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Idle slot capacity</text>
+<rect x="202.0" y="568.0" width="20.0" height="14.0" rx="2" fill="#15181E" stroke="#15181E" stroke-width="1" />
+<text x="230.0" y="579.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Slow task (T0 = 8u)</text>
+<text x="420.0" y="569.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#28527D" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.2" >Completion order: [T1, T2, T3, T0, T5, T4, T6]</text>
+<text x="420.0" y="588.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#156654" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.1" >Returned order:   [T0, T1, T2, T3, T4, T5, T6] (input-order slots; errors close admission)</text>
+<line x1="36.0" y1="618.0" x2="1164.0" y2="618.0" stroke="#D4CCBA" stroke-width="0.8" />
+<text x="36.0" y="638.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#525760" font-weight="normal" text-anchor="start" font-style="normal" letter-spacing="0.3" >Schematic simulation (durations [8, 3, 4, 2, 5, 3, 4], 3 slots). Mirrors src/agent.rs::run_tasks (Mutex queue, scoped thread join).</text>
+</svg>

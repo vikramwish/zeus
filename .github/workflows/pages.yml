@@ -1,0 +1,64 @@
+name: Deploy Technical Report to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/**'
+      - 'docs/figures/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble GitHub Pages site
+        run: |
+          mkdir -p _site/research _site/docs/figures
+          cp -r research/. _site/research/
+          rm -rf _site/research/scripts/__pycache__ _site/research/paper/*.aux _site/research/paper/*.log _site/research/paper/*.out
+          cp docs/figures/*.svg _site/docs/figures/
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <title>Zeus Technical Report TR-01</title>
+              <meta http-equiv="refresh" content="0; url=./research/" />
+              <link rel="canonical" href="./research/" />
+            </head>
+            <body>
+              <p>Redirecting to <a href="./research/">Zeus Technical Report TR-01 &amp; Interactive Systems Workbench</a>…</p>
+            </body>
+          </html>
+          HTML
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Enable and configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
