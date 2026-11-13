@@ -1,7 +1,7 @@
 # Autopilot Summary (`vikramwish/zeus`)
 
 ## Shipped / In Progress
-- **PR 1 (`autopilot/ci`):** Added GitHub Actions CI (`ubuntu-latest` + `macos-latest`), Dependabot (`cargo` + `github-actions`), MIT `LICENSE`, CI/License badges in `README.md`, Rust 1.91+ Clippy MSRV-safe fixes (`src/model.rs`, `src/cancel.rs`), and verifier inherited-FD `FD_CLOEXEC` hygiene fix + regression test (`src/process.rs`, `src/main.rs`, `tests/process_safety.rs`).
+- **PR 1 (`autopilot/ci`):** Added GitHub Actions CI (`ubuntu-latest` + `macos-latest` with Seatbelt & `bubblewrap`), Dependabot (`cargo` + `github-actions`), MIT `LICENSE`, CI/License badges in `README.md`, Rust 1.91+ Clippy MSRV-safe fixes (`src/model.rs`, `src/cancel.rs`), verifier inherited-FD `FD_CLOEXEC` hygiene fix + test, and Linux `bubblewrap` merged-`/usr` symlink + `--tmpfs /var/empty` fix + tests.
 
 ## Merged PRs
 - Pending PR #1 green CI and merge.
@@ -10,7 +10,7 @@
 - Pending GitHub Pages deployment in PR 2 (`autopilot/research-design`).
 
 ## Open Risks
-- Linux `bubblewrap` end-to-end execution remains unexercised on an unrestricted Linux user-namespace host (Ubuntu CI validates argument synthesis and fail-closed checks).
+- Live multi-model (`Qwen 3.5-9B` / API) inference benchmarks remain bounded to the exploratory `kv.py` field trials documented in TR-01; CI exercises deterministic scripted local HTTP fixtures end-to-end on Linux (`bubblewrap`) and macOS (`Seatbelt`).
 
 ## Next Moves
 1. Confirm PR #1 passes both Linux and macOS CI checks, complete `pr-review`, and squash-merge.

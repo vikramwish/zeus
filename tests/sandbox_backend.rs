@@ -33,15 +33,35 @@ fn bubblewrap_profile_mirrors_the_seatbelt_boundary() {
             "{joined}"
         );
     }
-    // Inert home, as on macOS.
-    assert!(joined.contains("--dir /var/empty") && joined.contains("--remount-ro /var/empty"));
-    // System directories are bound read-only only when they exist on this host.
+    // Inert home, as on macOS; tmpfs gives --remount-ro a real mount point on Linux.
+    assert!(
+        joined.contains("--tmpfs /var/empty --remount-ro /var/empty")
+            && !joined.contains("--dir /var/empty"),
+        "{joined}"
+    );
+    // Real system directories bind read-only; merged-/usr symlinks map via --symlink.
     for dir in ["/usr", "/bin", "/etc"] {
-        assert_eq!(
-            Path::new(dir).is_dir(),
-            joined.contains(&format!("--ro-bind {dir} {dir}")),
-            "{dir}: {joined}"
-        );
+        let Ok(meta) = std::fs::symlink_metadata(dir) else {
+            assert!(
+                !joined.contains(&format!("--ro-bind {dir} {dir}")),
+                "{joined}"
+            );
+            continue;
+        };
+        if meta.file_type().is_symlink() && Path::new(dir).is_dir() {
+            let target = std::fs::read_link(dir).unwrap();
+            assert!(
+                joined.contains(&format!("--symlink {} {dir}", target.to_string_lossy()))
+                    && !joined.contains(&format!("--ro-bind {dir} {dir}")),
+                "{dir}: {joined}"
+            );
+        } else {
+            assert_eq!(
+                meta.is_dir(),
+                joined.contains(&format!("--ro-bind {dir} {dir}")),
+                "{dir}: {joined}"
+            );
+        }
     }
     assert!(!joined.contains("--ro-bind /nonexistent-zeus-dir"));
     // The user's home must never be exposed.
