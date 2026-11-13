@@ -1012,3 +1012,44 @@ impl Workspace {
         Ok(ctx.inv)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn digest_matches_standard_sha256_vectors() {
+        assert_eq!(
+            digest(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            digest(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn secret_like_lut_matches_boundaries_decoys_and_precedence() {
+        assert_eq!(secret_like("too short"), None);
+        assert_eq!(secret_like(&["PRIVATE ", "KEY----"].concat()), None);
+        let pk_block = ["PRIVATE ", "KEY-----"].concat();
+        assert_eq!(secret_like(&pk_block), Some("private key block"));
+
+        let api_shape = ["sk", "-proj-", "abcdefghijklmnop", "1234"].concat();
+        for pad in 0..16 {
+            let text = format!("{}{api_shape}", " ".repeat(pad));
+            assert_eq!(secret_like(&text), Some("sk- API key"), "pad={pad}");
+            let combined = format!("{text}\n{pk_block}");
+            assert_eq!(
+                secret_like(&combined),
+                Some("private key block"),
+                "precedence pad={pad}"
+            );
+        }
+
+        // Short decoys should never trigger false positives.
+        let decoy = format!("// {}{}{}123 {}", "sk-", "short AKIA", "123 ", "AIza_short");
+        assert_eq!(secret_like(&decoy), None);
+    }
+}

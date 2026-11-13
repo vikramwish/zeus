@@ -199,3 +199,20 @@ fn compact_libtest(raw: &str) -> Option<String> {
     }
     (out.len() < raw.len()).then_some(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_len_within_returns_exact_length_and_stops_at_limit() {
+        let value = serde_json::json!({
+            "alpha": "hello world",
+            "numbers": [1, 2, 3, 4],
+        });
+        let expected = value.to_string().len();
+        assert_eq!(json_len_within(&value, expected).unwrap(), Some(expected));
+        assert_eq!(json_len_within(&value, expected - 1).unwrap(), None);
+        assert_eq!(json_len_within(&value, 0).unwrap(), None);
+    }
+}
