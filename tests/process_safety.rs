@@ -380,5 +380,16 @@ mod macos {
 #[test]
 fn unsupported_platform_fails_closed() {
     let err = verify(&["/bin/echo".into()], std::path::Path::new("/"), 1).unwrap_err();
-    assert!(err.contains("sandbox unavailable"));
+    let linux_has_bwrap = cfg!(target_os = "linux")
+        && ["/usr/bin/bwrap", "/usr/local/bin/bwrap", "/bin/bwrap"]
+            .iter()
+            .any(|path| std::path::Path::new(path).is_file());
+    if linux_has_bwrap {
+        assert!(
+            err.contains("verifier launcher must be outside candidate"),
+            "{err}"
+        );
+    } else {
+        assert!(err.contains("sandbox unavailable"), "{err}");
+    }
 }
