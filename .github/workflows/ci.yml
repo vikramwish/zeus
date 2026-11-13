@@ -25,14 +25,13 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install bubblewrap for Linux sandbox verification
+      - name: Verify bubblewrap Linux sandbox prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap
+          command -v bwrap >/dev/null || (sudo apt-get update && sudo apt-get install -y bubblewrap)
           if sysctl -n kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
-          bwrap --unshare-all --die-with-parent --new-session --dev /dev --proc /proc --ro-bind /usr /usr --symlink usr/bin /bin --tmpfs /var/empty --remount-ro /var/empty /bin/true
+          bwrap --unshare-all --die-with-parent --new-session --dev /dev --proc /proc --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 --tmpfs /var/empty --remount-ro /var/empty /bin/true
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy lint
