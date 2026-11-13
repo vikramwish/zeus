@@ -9,6 +9,11 @@
 <p align="center">A standalone Rust runtime for agents that work concurrently, own explicit file scopes,<br />and bring their changes together under an external verifier.</p>
 
 <p align="center">
+  <a href="https://github.com/vikramwish/zeus/actions/workflows/ci.yml"><img src="https://github.com/vikramwish/zeus/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-156654" alt="License: MIT" /></a>
+</p>
+
+<p align="center">
   <a href="#get-started">Get started</a> ·
   <a href="#the-execution-model">Execution model</a> ·
   <a href="docs/ORCHESTRATION.md">Orchestration</a> ·
