@@ -1,14 +1,14 @@
 # Zeus Technical Report TR-01: Bounded Concurrency and Fail-Closed Authority for Verifiable Agentic Coding
 
-> **Full formatted PDF:** [research/paper/zeus-report.pdf](paper/zeus-report.pdf) · **Interactive Workbench:** [research/index.html](index.html) · **Scrubbed Trial Dataset:** [research/data/field_runs.json](data/field_runs.json) · **Baseline Commit:** `9dbba43`
+> **Full formatted PDF:** [research/paper/zeus-report.pdf](paper/zeus-report.pdf) · **Interactive Workbench:** [research/index.html](index.html) · **Scrubbed Trial Dataset:** [research/data/field_runs.json](data/field_runs.json) · **Baseline Commit:** `0692fa6+`
 
 ---
 
 ## Abstract
 
-Autonomous coding agents frequently treat unstructured model output as an implicit grant of system capability, stall parallel worker pools behind synchronous batch barriers, or corrupt online strategy routers whenever transient transport failures occur. **Zeus** is a standalone Rust runtime (`7,245` lines across `18` modules under `src/`) that isolates untrusted model completions behind host-enforced capabilities, OS-level verification sandboxes (macOS Seatbelt / Linux `bubblewrap`), bounded memory/handoff envelopes, and verifier-gated UCB1 policy learning paired with an 8-gate fail-closed shadow outcome scorer (*Zeus Judge*).
+Autonomous coding agents frequently treat unstructured model output as an implicit grant of system capability, stall parallel worker pools behind synchronous batch barriers, or corrupt online strategy routers whenever transient transport failures occur. **Zeus** is a standalone Rust runtime (`7,852` lines across `18` modules under `src/`) that isolates untrusted model completions behind host-enforced capabilities, OS-level verification sandboxes (macOS Seatbelt / Linux `bubblewrap`), bounded memory/handoff envelopes, and verifier-gated UCB1 policy learning paired with an 8-gate fail-closed shadow outcome scorer (*Zeus Judge*).
 
-Across `266` deterministic Rust tests spanning `46` suites (requiring no live LLM) and `14` exploratory Qwen 3.5-9B local field trials, Zeus demonstrates work-conserving FIFO worker admission, whole-plan exact-file disjointness before worker spawn, strict `0/10` error isolation in router policy updates, and bounded transcript/handoff control. All figures, metrics, and runtime claims below are synchronized programmatically against repository commit `9dbba43`.
+Across `269` deterministic Rust tests spanning `48` suites (requiring no live LLM) and `14` exploratory Qwen 3.5-9B local field trials, Zeus demonstrates work-conserving FIFO worker admission, whole-plan exact-file disjointness before worker spawn, strict `0/10` error isolation in router policy updates, and bounded transcript/handoff control. All figures, metrics, and runtime claims below are synchronized programmatically against repository state (`0692fa6+`).
 
 ---
 
@@ -83,9 +83,9 @@ All `14` exploratory runs (`T01`–`T14`, Qwen 3.5-9B against the public `kv.py`
 
 ---
 
-## 5. Deterministic Verification Corpus (`266` Tests, `46` Suites)
+## 5. Deterministic Verification Corpus (`269` Tests, `48` Suites)
 
-Zeus maintains `266` static `#[test]` functions across `44` integration test files (`tests/*.rs`), `3` inline unit tests in `src/runtime.rs`, and `1` unit test in `src/process.rs` (`46` suites total; `2` opt-in `#[ignore]` tests plus OS-gated macOS Seatbelt and Linux `bubblewrap` checks), requiring zero live LLM calls.
+Zeus maintains `269` static `#[test]` functions across `44` integration test files (`tests/*.rs`), `3` inline unit tests in `src/runtime.rs`, `2` in `src/workspace.rs`, `1` in `src/process.rs`, and `1` in `src/output.rs` (`48` suites total; `2` opt-in `#[ignore]` tests plus OS-gated macOS Seatbelt and Linux `bubblewrap` checks), requiring zero live LLM calls.
 
 ![Figure 6 — Deterministic Test Corpus by Subsystem](../docs/figures/fig6-tests.svg)
 

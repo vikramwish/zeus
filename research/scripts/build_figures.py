@@ -182,6 +182,7 @@ TEST_GROUPS = [
     ("Workspace, Secret Guard & Output", [
         "workspace_safety", "workspace_tools", "workspace_concurrency",
         "project_context", "output_compaction", "secret_guard", "snapshot_depth",
+        "src/workspace", "src/output",
     ]),
     ("Plugins, MCP & Analyzers", [
         "plugin_bundles", "plugin_runtime", "plugin_deadline", "plugin_example",
@@ -308,7 +309,7 @@ def fig_cover():
 
     out.append(mono(46, 548, "github.com/vikramwish/zeus", 12, NIGHT_MUTED, ls=0.8))
     out.append(rect(285, 530, 150, 24, "#102822", TEAL, 1, rx=12))
-    out.append(mono(360, 546, "HEAD · 9dbba43", 10.5, "#6EE7B7", "bold", anchor="middle", ls=0.8))
+    out.append(mono(360, 546, "HEAD · 0692fa6+", 10.5, "#6EE7B7", "bold", anchor="middle", ls=0.8))
 
     # Right Column: Execution Topology DAG
     cx = 892
