@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="t5 d5">
+<title id="t5">Figure 5. Empirical Field Trials: Failure Modes Drove Runtime Hardening</title>
+<desc id="d5">Timeline of 14 exploratory Qwen 9B trials showing failure classification and commit fixes</desc>
+<defs><marker id="arrow-ink" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#15181E"/></marker><marker id="arrow-bolt" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#D93B21"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#156654"/></marker><marker id="arrow-ochre" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#B5760D"/></marker><marker id="arrow-slate" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#28527D"/></marker><marker id="arrow-muted" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#7D838E"/></marker><marker id="arrow-cream" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#ECEFF4"/></marker><pattern id="grid-light" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#EAE4D5" stroke-width="0.8"/></pattern><pattern id="hatch-amber" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#B5760D" stroke-opacity="0.28" stroke-width="2"/></pattern><pattern id="hatch-model" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="10" stroke="#D4CCBA" stroke-opacity="0.35" stroke-width="1.4"/></pattern><filter id="shadow-card" x="-4%" y="-4%" width="108%" height="112%" filterUnits="userSpaceOnUse"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#15181E" flood-opacity="0.06"/></filter><filter id="shadow-bolt" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#D93B21" flood-opacity="0.45"/></filter></defs>
+<rect x="0.0" y="0.0" width="1200.0" height="680.0" rx="0" fill="#F7F4EC" stroke="none" stroke-width="0" />
+<rect x="10.0" y="10.0" width="1180.0" height="660.0" rx="10" fill="none" stroke="#D4CCBA" stroke-width="1" />
+<rect x="36.0" y="30.0" width="64.0" height="24.0" rx="4" fill="#D93B21" stroke="none" stroke-width="0" />
+<text x="68.0" y="46.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#FFFFFF" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="1.4" >FIG. 5</text>
+<text x="114.0" y="49.0" font-family="'Iowan Old Style', 'Charter', 'Palatino Linotype', Palatino, Georgia, serif" font-size="21.5" fill="#15181E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0" >Empirical Field Trials: Failure Modes Drove Runtime Hardening</text>
+<text x="1164.0" y="46.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="1.3" >ZEUS · TECHNICAL REPORT TR-01</text>
+<line x1="36.0" y1="66.0" x2="1164.0" y2="66.0" stroke="#15181E" stroke-width="1.2" />
+<line x1="36.0" y1="69.5" x2="1164.0" y2="69.5" stroke="#D4CCBA" stroke-width="0.7" />
+<rect x="36.0" y="86.0" width="1128.0" height="536.0" rx="8" fill="#FFFFFF" stroke="#D4CCBA" stroke-width="1" filter="url(#shadow-card)"/>
+<text x="56.0" y="112.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.8" >HARDENING COMMITS:</text>
+<rect x="212.0" y="97.0" width="64.0" height="21.0" rx="4" fill="#FDF1EE" stroke="#D93B21" stroke-width="1" />
+<text x="244.0" y="111.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.3" >d121e6b</text>
+<text x="284.0" y="112.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >planner envelopes</text>
+<rect x="420.0" y="97.0" width="64.0" height="21.0" rx="4" fill="#FDF1EE" stroke="#D93B21" stroke-width="1" />
+<text x="452.0" y="111.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.3" >3267d6f</text>
+<text x="492.0" y="112.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >model deadlines</text>
+<rect x="628.0" y="97.0" width="64.0" height="21.0" rx="4" fill="#FDF1EE" stroke="#D93B21" stroke-width="1" />
+<text x="660.0" y="111.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.3" >3f7e00a</text>
+<text x="700.0" y="112.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >denied recovery</text>
+<line x1="94.0" y1="480.0" x2="880.0" y2="480.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="86.0" y="484.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="0" >0s</text>
+<line x1="94.0" y1="410.0" x2="880.0" y2="410.0" stroke="#EAE4D5" stroke-width="1" />
+<text x="86.0" y="414.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="0" >250s</text>
+<line x1="94.0" y1="340.0" x2="880.0" y2="340.0" stroke="#EAE4D5" stroke-width="1" />
+<text x="86.0" y="344.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="0" >500s</text>
+<line x1="94.0" y1="270.0" x2="880.0" y2="270.0" stroke="#EAE4D5" stroke-width="1" />
+<text x="86.0" y="274.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="0" >750s</text>
+<line x1="94.0" y1="200.0" x2="880.0" y2="200.0" stroke="#EAE4D5" stroke-width="1" />
+<text x="86.0" y="204.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="normal" text-anchor="end" font-style="normal" letter-spacing="0" >1000s</text>
+<text x="56.0" y="180.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#525760" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.8" >APPROX. WALL TIME</text>
+<line x1="571.7" y1="168.0" x2="571.7" y2="480.0" stroke="#D93B21" stroke-width="1.3" stroke-dasharray="4 3"/>
+<rect x="541.7" y="148.0" width="60.0" height="18.0" rx="4" fill="#FDF1EE" stroke="#D93B21" stroke-width="1" />
+<text x="571.7" y="161.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="9.5" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.2" >d121e6b</text>
+<line x1="732.5" y1="152.0" x2="732.5" y2="480.0" stroke="#D93B21" stroke-width="1.3" stroke-dasharray="4 3"/>
+<path d="M708.5109489051094 150L732.5109489051094 156" fill="none" stroke="#D93B21" stroke-width="1.1" />
+<rect x="678.5" y="132.0" width="60.0" height="18.0" rx="4" fill="#FDF1EE" stroke="#D93B21" stroke-width="1" />
+<text x="708.5" y="145.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="9.5" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.2" >3267d6f</text>
+<line x1="748.8" y1="178.0" x2="748.8" y2="480.0" stroke="#D93B21" stroke-width="1.3" stroke-dasharray="4 3"/>
+<path d="M772.8363651287888 176L748.8363651287888 182" fill="none" stroke="#D93B21" stroke-width="1.1" />
+<rect x="742.8" y="158.0" width="60.0" height="18.0" rx="4" fill="#FDF1EE" stroke="#D93B21" stroke-width="1" />
+<text x="772.8" y="171.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="9.5" fill="#D93B21" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.2" >3f7e00a</text>
+<line x1="104.0" y1="480.0" x2="104.0" y2="468.0" stroke="#B5760D" stroke-width="2.2" />
+<circle cx="104.0" cy="468.0" r="8.5" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="104.0" y="454.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >PTH</text>
+<text x="104.0" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T01</text>
+<line x1="162.6" y1="480.0" x2="162.6" y2="465.4" stroke="#B5760D" stroke-width="2.2" />
+<circle cx="162.6" cy="465.4" r="8.5" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="162.6" y="451.4" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >TRN</text>
+<text x="162.6" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T02</text>
+<line x1="221.2" y1="480.0" x2="221.2" y2="386.5" stroke="#525760" stroke-width="2.2" />
+<circle cx="221.2" cy="386.5" r="8.5" fill="#FFFFFF" stroke="#525760" stroke-width="2" />
+<text x="221.2" y="372.5" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >killed</text>
+<text x="221.2" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T03</text>
+<line x1="279.8" y1="480.0" x2="279.8" y2="350.4" stroke="#156654" stroke-width="2.2" />
+<circle cx="279.8" cy="350.4" r="8.5" fill="#156654" stroke="#156654" stroke-width="2" />
+<text x="279.8" y="336.4" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#156654" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >77 ok</text>
+<text x="279.8" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T04</text>
+<line x1="338.5" y1="480.0" x2="338.5" y2="433.8" stroke="#B5760D" stroke-width="2.2" />
+<circle cx="338.5" cy="433.8" r="8.5" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="338.5" y="419.8" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >TRN</text>
+<text x="338.5" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T05</text>
+<line x1="397.1" y1="480.0" x2="397.1" y2="410.0" stroke="#156654" stroke-width="2.2" />
+<circle cx="397.1" cy="410.0" r="8.5" fill="#156654" stroke="#156654" stroke-width="2" />
+<text x="397.1" y="396.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#156654" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >82 ok</text>
+<text x="397.1" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T06</text>
+<line x1="455.7" y1="480.0" x2="455.7" y2="443.6" stroke="#B5760D" stroke-width="2.2" />
+<rect x="447.2" y="435.1" width="17.0" height="17.0" rx="3" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="455.7" y="429.6" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >PLN</text>
+<text x="455.7" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T07</text>
+<line x1="514.3" y1="480.0" x2="514.3" y2="335.2" stroke="#B5760D" stroke-width="2.2" />
+<rect x="505.8" y="326.7" width="17.0" height="17.0" rx="3" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="514.3" y="321.2" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >TRN</text>
+<text x="514.3" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T08</text>
+<line x1="572.9" y1="480.0" x2="572.9" y2="424.0" stroke="#B5760D" stroke-width="2.2" />
+<rect x="564.4" y="415.5" width="17.0" height="17.0" rx="3" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="572.9" y="410.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >PLN</text>
+<text x="572.9" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T09</text>
+<line x1="631.5" y1="480.0" x2="631.5" y2="466.8" stroke="#B5760D" stroke-width="2.2" />
+<rect x="623.0" y="458.3" width="17.0" height="17.0" rx="3" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="631.5" y="452.8" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >PLN</text>
+<text x="631.5" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T10</text>
+<line x1="690.2" y1="480.0" x2="690.2" y2="386.2" stroke="#B5760D" stroke-width="2.2" />
+<rect x="681.7" y="377.7" width="17.0" height="17.0" rx="3" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="690.2" y="372.2" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >CAP</text>
+<text x="690.2" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T11</text>
+<line x1="748.8" y1="480.0" x2="748.8" y2="301.4" stroke="#156654" stroke-width="2.2" />
+<rect x="740.3" y="292.9" width="17.0" height="17.0" rx="3" fill="#156654" stroke="#156654" stroke-width="2" />
+<text x="760.8" y="291.4" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#156654" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.1" >82 ok</text>
+<text x="748.8" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T12</text>
+<line x1="807.4" y1="480.0" x2="807.4" y2="417.0" stroke="#156654" stroke-width="2.2" />
+<circle cx="807.4" cy="417.0" r="8.5" fill="#156654" stroke="#156654" stroke-width="2" />
+<text x="807.4" y="403.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#156654" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >82 ok</text>
+<text x="807.4" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T13</text>
+<line x1="866.0" y1="480.0" x2="866.0" y2="203.9" stroke="#B5760D" stroke-width="2.2" />
+<rect x="857.5" y="195.4" width="17.0" height="17.0" rx="3" fill="#B5760D" stroke="#B5760D" stroke-width="2" />
+<text x="866.0" y="189.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.1" >TRN</text>
+<text x="866.0" y="500.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >T14</text>
+<path d="M90.0 512v6h145.23076923076923v-6" fill="none" stroke="#7D838E" stroke-width="1" />
+<text x="162.6" y="532.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.4" >smoke</text>
+<path d="M265.8461538461538 512v6h28.0v-6" fill="none" stroke="#7D838E" stroke-width="1" />
+<text x="279.8" y="532.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.4" >model-test</text>
+<path d="M324.46153846153845 512v6h438.30769230769226v-6" fill="none" stroke="#7D838E" stroke-width="1" />
+<text x="543.6" y="532.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.4" >acceptance</text>
+<path d="M793.3846153846154 512v6h86.61538461538464v-6" fill="none" stroke="#7D838E" stroke-width="1" />
+<text x="836.7" y="532.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0.4" >router-training</text>
+<text x="426.4" y="552.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="1" >01 NOV</text>
+<text x="836.7" y="552.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#15181E" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="1" >03 NOV</text>
+<rect x="56.0" y="568.0" width="818.0" height="36.0" rx="6" fill="#ECE7DA" stroke="#D4CCBA" stroke-width="1" />
+<text x="68.0" y="590.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="9.8" fill="#28527D" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.3" >MAINLINE HARDENING (NOV 10–13):</text>
+<text x="272.0" y="590.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >4ff3aa2 compact · eede4f1 deadline · e4143e4 judge · 9dbba43 ci/bwrap/FD</text>
+<line x1="890.0" y1="102.0" x2="890.0" y2="604.0" stroke="#D4CCBA" stroke-width="1" />
+<text x="910.0" y="120.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16.5" fill="#15181E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0" >Trial Outcome Tally</text>
+<text x="910.0" y="138.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#7D838E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.8" >14 RUNS · QWEN 3.5-9B</text>
+<text x="910.0" y="181.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Verified Pass</text>
+<rect x="910.0" y="189.0" width="12.0" height="12.0" rx="2" fill="#156654" stroke="none" stroke-width="0" />
+<rect x="927.0" y="189.0" width="12.0" height="12.0" rx="2" fill="#156654" stroke="none" stroke-width="0" />
+<rect x="944.0" y="189.0" width="12.0" height="12.0" rx="2" fill="#156654" stroke="none" stroke-width="0" />
+<rect x="961.0" y="189.0" width="12.0" height="12.0" rx="2" fill="#156654" stroke="none" stroke-width="0" />
+<rect x="1108.0" y="168.0" width="36.0" height="22.0" rx="11.0" fill="#EEF6F3" stroke="#156654" stroke-width="1" /><text x="1126.0" y="182.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#156654" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >4</text>
+<text x="910.0" y="229.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Transport / Timeout</text>
+<rect x="910.0" y="237.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="927.0" y="237.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="944.0" y="237.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="961.0" y="237.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="1108.0" y="216.0" width="36.0" height="22.0" rx="11.0" fill="#FCF5E8" stroke="#B5760D" stroke-width="1" /><text x="1126.0" y="230.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >4</text>
+<text x="910.0" y="277.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Planner JSON Format</text>
+<rect x="910.0" y="285.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="927.0" y="285.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="944.0" y="285.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="1108.0" y="264.0" width="36.0" height="22.0" rx="11.0" fill="#FCF5E8" stroke="#B5760D" stroke-width="1" /><text x="1126.0" y="278.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >3</text>
+<text x="910.0" y="325.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Unknown Tool Call</text>
+<rect x="910.0" y="333.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="1108.0" y="312.0" width="36.0" height="22.0" rx="11.0" fill="#FCF5E8" stroke="#B5760D" stroke-width="1" /><text x="1126.0" y="326.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >1</text>
+<text x="910.0" y="373.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Path Contract Rule</text>
+<rect x="910.0" y="381.0" width="12.0" height="12.0" rx="2" fill="#B5760D" stroke="none" stroke-width="0" />
+<rect x="1108.0" y="360.0" width="36.0" height="22.0" rx="11.0" fill="#FCF5E8" stroke="#B5760D" stroke-width="1" /><text x="1126.0" y="374.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#B5760D" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >1</text>
+<text x="910.0" y="421.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#15181E" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Interrupted / Killed</text>
+<rect x="910.0" y="429.0" width="12.0" height="12.0" rx="2" fill="#525760" stroke="none" stroke-width="0" />
+<rect x="1108.0" y="408.0" width="36.0" height="22.0" rx="11.0" fill="#ECE7DA" stroke="#525760" stroke-width="1" /><text x="1126.0" y="422.9" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11.5" fill="#525760" font-weight="bold" text-anchor="middle" font-style="normal" letter-spacing="0" >1</text>
+<line x1="910.0" y1="464.0" x2="1144.0" y2="464.0" stroke="#EAE4D5" stroke-width="1" />
+<text x="910.0" y="488.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="normal" text-anchor="start" font-style="normal" letter-spacing="0.4" >TRN transport   PLN planner</text>
+<text x="910.0" y="507.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="10.5" fill="#525760" font-weight="normal" text-anchor="start" font-style="normal" letter-spacing="0.4" >CAP capability  PTH path</text>
+<text x="910.0" y="534.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#15181E" font-weight="bold" text-anchor="start" font-style="normal" letter-spacing="0.4" >○ Direct   □ Parallel</text>
+<text x="910.0" y="560.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#525760" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >Fixture: public kv.py (77→82</text>
+<text x="910.0" y="576.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#525760" font-weight="500" text-anchor="start" font-style="normal" letter-spacing="0" >checks). Exploratory, not benchmark.</text>
+<line x1="36.0" y1="638.0" x2="1164.0" y2="638.0" stroke="#D4CCBA" stroke-width="0.8" />
+<text x="36.0" y="658.0" font-family="'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" fill="#525760" font-weight="normal" text-anchor="start" font-style="normal" letter-spacing="0.3" >Source: research/data/field_runs.json (extracted from local runs/). No failed run updated the router.</text>
+</svg>
