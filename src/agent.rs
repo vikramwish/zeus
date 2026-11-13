@@ -65,10 +65,10 @@ fn compact(messages: &mut [Value], bytes: &mut usize, keep_last: usize) -> Resul
     }
     *bytes = 2;
     for message in messages.iter() {
-        *bytes += serde_json::to_vec(message)
+        let len = crate::output::json_len_within(message, usize::MAX)
             .map_err(|_| "invalid context JSON")?
-            .len()
-            + 1;
+            .unwrap_or(0);
+        *bytes += len + 1;
     }
     Ok(elide.len())
 }
@@ -87,14 +87,16 @@ fn push_message(
     bytes: &mut usize,
     message: Value,
 ) -> Result<(), String> {
-    let size = serde_json::to_vec(&message)
-        .map_err(|_| "invalid context JSON")?
-        .len();
-    let next = bytes.saturating_add(size).saturating_add(1);
-    if next > MAX_CONTEXT_BYTES {
+    if *bytes >= MAX_CONTEXT_BYTES {
         return Err("agent context exceeds 4 MiB limit".into());
     }
-    *bytes = next;
+    let remaining = MAX_CONTEXT_BYTES.saturating_sub(bytes.saturating_add(1));
+    let Some(size) =
+        crate::output::json_len_within(&message, remaining).map_err(|_| "invalid context JSON")?
+    else {
+        return Err("agent context exceeds 4 MiB limit".into());
+    };
+    *bytes = bytes.saturating_add(size).saturating_add(1);
     messages.push(message);
     Ok(())
 }
@@ -317,67 +319,82 @@ pub fn run(
             continue;
         }
         consecutive_truncations = 0;
-        let calls = message
+        let call_count = message
             .get("tool_calls")
             .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        if calls.len() > MAX_TOOL_CALLS - tool_calls {
+            .map_or(0, Vec::len);
+        if call_count > MAX_TOOL_CALLS - tool_calls {
             return Err("agent tool call limit exceeded".into());
         }
-        push_message(&mut messages, &mut context_bytes, message.clone())?;
-        if calls.is_empty() {
-            return Ok(AgentResult {
-                text: message["content"]
+        let final_text = if call_count == 0 {
+            Some(
+                message["content"]
                     .as_str()
                     .ok_or("missing final text")?
-                    .into(),
+                    .to_owned(),
+            )
+        } else {
+            None
+        };
+        push_message(&mut messages, &mut context_bytes, message)?;
+        if let Some(text) = final_text {
+            return Ok(AgentResult {
+                text,
                 messages,
                 tool_calls,
             });
         }
         // Validate the complete batch before invoking any capability.
-        let mut validated = Vec::new();
-        for call in &calls {
-            if call["type"] != "function" {
-                return Err("unsupported tool call type".into());
-            }
-            let id = call["id"]
-                .as_str()
-                .filter(|s| identifier(s, 128))
-                .ok_or("invalid tool call ID")?;
-            if !ids.insert(id.to_string()) {
-                return Err("duplicate tool call ID".into());
-            }
-            let name = call["function"]["name"]
-                .as_str()
-                .filter(|s| identifier(s, 64))
-                .ok_or("invalid tool name")?;
-            let args: Value = serde_json::from_str(
-                call["function"]["arguments"]
+        let mut validated = Vec::with_capacity(call_count);
+        {
+            let calls = messages
+                .last()
+                .and_then(|m| m.get("tool_calls"))
+                .and_then(Value::as_array)
+                .ok_or("missing tool_calls")?;
+            for call in calls {
+                if call["type"] != "function" {
+                    return Err("unsupported tool call type".into());
+                }
+                let id = call["id"]
                     .as_str()
-                    .ok_or("missing tool arguments")?,
-            )
-            .map_err(|_| "invalid tool arguments")?;
-            if !args.is_object() {
-                return Err("tool arguments must be a JSON object".into());
+                    .filter(|s| identifier(s, 128))
+                    .ok_or("invalid tool call ID")?;
+                if !ids.insert(id.to_string()) {
+                    return Err("duplicate tool call ID".into());
+                }
+                let name = call["function"]["name"]
+                    .as_str()
+                    .filter(|s| identifier(s, 64))
+                    .ok_or("invalid tool name")?;
+                let args: Value = serde_json::from_str(
+                    call["function"]["arguments"]
+                        .as_str()
+                        .ok_or("missing tool arguments")?,
+                )
+                .map_err(|_| "invalid tool arguments")?;
+                if !args.is_object() {
+                    return Err("tool arguments must be a JSON object".into());
+                }
+                validated.push((id.to_owned(), name.to_owned(), args));
             }
-            validated.push((id, name, args));
         }
         // A well-formed capability denial is recoverable, but never dispatch a
         // partial batch. Denied and skipped calls consume IDs and the call budget;
         // only a subsequent model turn can request fresh calls.
-        let denied = validated.iter().any(|(_, name, _)| !allowed.contains(name));
+        let denied = validated
+            .iter()
+            .any(|(_, name, _)| !allowed.contains(name.as_str()));
         tool_calls += validated.len();
         for (id, name, args) in validated {
             let result = if denied {
-                if allowed.contains(name) {
+                if allowed.contains(name.as_str()) {
                     json!({"error":"batch skipped: another call requested an unknown or unauthorized tool; no calls were executed"})
                 } else {
                     json!({"error":"unknown or unauthorized tool: not in the advertised allowlist; no calls were executed"})
                 }
             } else {
-                host.call(name, args)?
+                host.call(&name, args)?
             };
             let content = result.to_string();
             if content.len() > MAX_TOOL_RESULT_BYTES {

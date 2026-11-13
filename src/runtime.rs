@@ -122,7 +122,7 @@ struct Shared {
     user_write_paths: Option<Vec<String>>,
     audit: Audit,
     findings: Mutex<Vec<Finding>>,
-    sources: Mutex<Vec<String>>,
+    sources: Mutex<std::collections::HashSet<String>>,
     mcp: Mutex<Vec<(String, McpClient)>>,
     plugins: Mutex<PluginRuntime>,
     verifier: Vec<String>,
@@ -230,8 +230,8 @@ impl Host {
             .map_err(|_| "source lock poisoned")?;
         for value in values {
             if let Some(source) = value["source_id"].as_str() {
-                if !sources.iter().any(|known| known == source) {
-                    sources.push(source.to_owned());
+                if !sources.contains(source) {
+                    sources.insert(source.to_owned());
                 }
             }
         }
@@ -271,7 +271,7 @@ impl Host {
                         return Err("combined skill catalog count limit exceeded (64)".into());
                     }
                 }
-                if result.to_string().len() > 32 * 1024 {
+                if crate::output::json_len_within(&result, 32 * 1024)?.is_none() {
                     return Err("combined skill catalog output byte limit exceeded (32768)".into());
                 }
                 if let Some(skills) = result["skills"].as_array() {
@@ -323,7 +323,7 @@ impl Host {
                     .lock()
                     .map_err(|_| "source lock poisoned")?;
                 if !known.contains(&source_id) {
-                    known.push(source_id.clone());
+                    known.insert(source_id.clone());
                 }
                 Ok(json!({"content":read.content,"sha256":read.sha256,"source_id":source_id}))
             }
@@ -351,7 +351,9 @@ impl Host {
                     .sources
                     .lock()
                     .map_err(|_| "source lock poisoned")?;
-                evidence::validate_findings(std::slice::from_ref(&finding), &sources)?;
+                evidence::validate_findings_lookup(std::slice::from_ref(&finding), |s| {
+                    sources.contains(s)
+                })?;
                 let mut findings = self
                     .shared
                     .findings
@@ -497,7 +499,7 @@ impl ToolHost for Host {
                 .sources
                 .lock()
                 .map_err(|_| "source lock poisoned")?
-                .push(id.clone());
+                .insert(id.clone());
         }
         // A rejected operation stays rejected, but its diagnostic is visible to the
         // model so it can correct paths/arguments. Audit failures above remain fatal.
@@ -1112,11 +1114,11 @@ fn run_agents(
         .findings
         .lock()
         .map_err(|_| "finding lock poisoned")?;
-    evidence::write_report(
+    evidence::write_report_checked(
         &run_dir.join("findings.json"),
         job.source.to_str().ok_or("non-UTF8 source")?,
         &findings,
-        &sources,
+        |s| sources.contains(s),
     )?;
     let status = match &verification {
         None => "unverified",
@@ -1229,7 +1231,7 @@ for line in sys.stdin:
                     user_write_paths: None,
                     audit: Audit::new(&dir.path().join("events.jsonl")).unwrap(),
                     findings: Mutex::new(vec![]),
-                    sources: Mutex::new(vec![]),
+                    sources: Mutex::new(std::collections::HashSet::new()),
                     mcp: Mutex::new(servers),
                     plugins: Mutex::new(PluginRuntime::empty()),
                     verifier: vec![],
