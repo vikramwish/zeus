@@ -20,6 +20,12 @@ fn verifier_exec(fd: &str, argv: &[String]) -> Result<(), String> {
         {
             return Err("invalid private verifier launch channel".into());
         }
+        for other in 3..1024 {
+            let flags = libc::fcntl(other, libc::F_GETFD);
+            if flags != -1 && (flags & libc::FD_CLOEXEC) == 0 {
+                let _ = libc::fcntl(other, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
     }
     let mut channel = unsafe { std::fs::File::from_raw_fd(fd) };
     let args = argv

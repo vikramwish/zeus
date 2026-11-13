@@ -315,6 +315,46 @@ fn seatbelt_profile(
     Ok(profile)
 }
 
+#[cfg(unix)]
+unsafe fn ensure_cloexec(fd: i32) -> std::io::Result<()> {
+    let flags = libc::fcntl(fd, libc::F_GETFD);
+    if flags != -1
+        && (flags & libc::FD_CLOEXEC) == 0
+        && libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) == -1
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn non_cloexec_fds(launch_fd: i32) -> Vec<i32> {
+    let mut fds = Vec::new();
+    for dir in ["/dev/fd", "/proc/self/fd"] {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Some(fd) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.parse::<i32>().ok())
+            else {
+                continue;
+            };
+            if fd < 3 || fd == launch_fd {
+                continue;
+            }
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+            if flags != -1 && (flags & libc::FD_CLOEXEC) == 0 {
+                fds.push(fd);
+            }
+        }
+        break;
+    }
+    fds
+}
+
 /// Shared supervision for every backend: launch handshake, output capture
 /// with deadline and size bounds, CPU/file/descriptor limits, process-group
 /// cleanup, and cancellation.
@@ -328,12 +368,23 @@ fn supervise(
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
+        let extra_fds = non_cloexec_fds(launch_fd);
         unsafe {
             command.pre_exec(move || {
                 // Only this child inherits the channel through sandbox-exec;
                 // the helper restores CLOEXEC before executing verifier code.
                 if libc::fcntl(launch_fd, libc::F_SETFD, 0) == -1 {
                     return Err(std::io::Error::last_os_error());
+                }
+                // Prevent parent-inherited descriptors (e.g. IDE/CI sockets)
+                // from leaking into the sandbox or verifier child on exec.
+                for &fd in extra_fds.iter() {
+                    ensure_cloexec(fd)?;
+                }
+                for fd in 3..256 {
+                    if fd != launch_fd {
+                        ensure_cloexec(fd)?;
+                    }
                 }
                 if libc::setpgid(0, 0) != 0 {
                     return Err(std::io::Error::last_os_error());

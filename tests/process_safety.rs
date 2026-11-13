@@ -274,6 +274,30 @@ mod macos {
     }
 
     #[test]
+    fn verifier_does_not_inherit_caller_non_cloexec_descriptors() {
+        use std::os::{fd::AsRawFd, unix::net::UnixStream};
+        let temp = candidate();
+        let (sock, _peer) = UnixStream::pair().unwrap();
+        let leaked_fd = sock.as_raw_fd();
+        assert_eq!(unsafe { libc::fcntl(leaked_fd, libc::F_SETFD, 0) }, 0);
+        let result = verify(
+            &[
+                super::common::python3(),
+                "-I".into(),
+                "-c".into(),
+                format!(
+                    "import os\ntry:\n os.fstat({leaked_fd})\nexcept OSError:\n print('closed')\nelse:\n raise AssertionError(('leaked fd', {leaked_fd}))\n"
+                ),
+            ],
+            temp.path(),
+            10,
+        )
+        .unwrap();
+        assert!(result.success, "{result:?}");
+        assert_eq!(result.stdout.trim(), "closed");
+    }
+
+    #[test]
     fn launcher_without_exec_handshake_is_never_a_test_outcome() {
         let temp = candidate();
         for launcher in ["/usr/bin/true", "/usr/bin/false"] {
