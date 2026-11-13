@@ -302,11 +302,21 @@ impl ChatClient {
                 crate::cancel::check()?;
                 if let Some(budget) = &budget {
                     use std::sync::atomic::Ordering;
-                    budget
-                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
-                            left.checked_sub(1)
-                        })
-                        .map_err(|_| "autonomy model-call budget exhausted")?;
+                    let mut left = budget.load(Ordering::Relaxed);
+                    loop {
+                        let next = left
+                            .checked_sub(1)
+                            .ok_or("autonomy model-call budget exhausted")?;
+                        match budget.compare_exchange_weak(
+                            left,
+                            next,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        ) {
+                            Ok(_) => break,
+                            Err(observed) => left = observed,
+                        }
+                    }
                 }
                 let failure = match exchange(request.clone(), &body, protocol, timeout_seconds) {
                     Ok(message)

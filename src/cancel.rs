@@ -56,7 +56,7 @@ extern "C" fn on_signal(signal: libc::c_int) {
 pub fn install() -> Result<(), String> {
     for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
         let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
-        action.sa_sigaction = on_signal as usize;
+        action.sa_sigaction = on_signal as *const () as usize;
         action.sa_flags = 0;
         unsafe {
             libc::sigemptyset(&mut action.sa_mask);
