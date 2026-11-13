@@ -47,3 +47,13 @@
   - Set `codegen-units = 1` alongside existing `lto = "thin"` and `strip = true` in `[profile.release]`. **Rejected** `panic = "abort"` because `src/agent.rs::run_tasks` requires unwinding to catch worker panics cleanly via `std::panic::catch_unwind`.
 - **Decision 4 (TR-01 & Research Workbench Synchronization):**
   - Categorized the 3 new inline unit tests (`src/workspace.rs`, `src/output.rs`) under `Workspace, Secret Guard & Output` (`43` tests) in `research/scripts/build_figures.py::TEST_GROUPS`, regenerated `docs/figures/*.svg`, rendered `research/paper/figures/*.pdf`, recompiled `research/paper/zeus-report.pdf`, and synchronized `research/REPORT.md`, `research/index.html`, `research/app.js`, and `research/scripts/verify_workbench.py` (`7,852` LOC, `269` tests across `48` suites).
+
+
+## 2026-11-13 — Portfolio Audit (`autopilot/repo-audit`)
+- **Scope:** Inventoried all `21` repositories on `vikramwish` (`6` public, `15` private; `19` active, `2` archived public coursework repos), cloned all `18` non-archived sibling repos into `/repos/` (excluded via `.git/info/exclude`), scanned working trees + git history for secret/env leaks, checked live URLs (`apart-epistemics`, `zeus`, `haven-key`), checked GitHub Actions history, and ran bounded local build/test smoke checks.
+- **Prioritisation Decision:** Before forging brand-new repos, prioritize fixing structural flagship/operational regressions found in the audit:
+  1. `openfiles-mac` (PUBLIC, pinned, 78/100): missing CI workflow & MIT `LICENSE`.
+  2. `tally` (PUBLIC, pinned, 67/100): missing CI workflow, MIT `LICENSE`, GitHub description/topics/homepage, screenshots, and web preview.
+  3. `haven-key` (PRIVATE, 64/100): failing CI on `main` (`43211605135`: phone nav language control assertion) and HTTP `404` on `https://haven-key-4f8z.vercel.app` (verified `vercel whoami` -> `vikramwish` is authenticated for redeployment after fixing `main`).
+- **Rejected Alternative:** Immediately jumping to `project-forge` while 2 of 3 pinned public repos lacked CI/licenses and a flagship app's live URL returned `404`.
+- **Policy Guardrails:** Left `INFO-5940-A1`, `AEM2850`, and stale archive candidates (`FoodSensing`, `memory-game`, `flip-face-off`, `Sensingdevices`) unmodified on GitHub per Hard Floor (no deleting/archiving/changing visibility of existing repos); flagged owner recommendations in `reports/AUDIT.md`.
