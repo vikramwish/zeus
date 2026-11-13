@@ -415,6 +415,8 @@ impl Workspace {
                 file.set_permissions(permissions)?;
             }
             file.sync_all()?;
+            // Drop the writable FD before rename so concurrent exec never hits ETXTBSY.
+            drop(file);
             fs::rename(&temp, &target)
         })();
         if result.is_err() {

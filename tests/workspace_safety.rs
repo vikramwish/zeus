@@ -3,10 +3,29 @@ use workspace::Workspace;
 use zeus::workspace;
 
 #[cfg(unix)]
+fn assert_exec_stdout(path: &std::path::Path, expected: &[u8]) {
+    use std::io::ErrorKind;
+    use std::process::Command;
+
+    for attempt in 0..10 {
+        match Command::new(path).output() {
+            Ok(output) => {
+                assert!(output.status.success());
+                assert_eq!(output.stdout, expected);
+                return;
+            }
+            Err(err) if err.kind() == ErrorKind::ExecutableFileBusy && attempt < 9 => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(err) => panic!("failed running {}: {err}", path.display()),
+        }
+    }
+}
+
+#[cfg(unix)]
 #[test]
 fn snapshot_preserves_rwx_without_privilege_bits() {
     use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
 
     for mode in [0o751, 0o7751, 0o640, 0o7640] {
         let tmp = tempfile::tempdir().unwrap();
@@ -19,17 +38,13 @@ fn snapshot_preserves_rwx_without_privilege_bits() {
             mode
         );
         if mode & 0o100 != 0 {
-            let output = Command::new(&source).output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(output.stdout, b"before");
+            assert_exec_stdout(&source, b"before");
         }
 
         let ws = Workspace::snapshot(&source, &tmp.path().join("candidate")).unwrap();
         let candidate = ws.root.join("script.sh");
         if mode & 0o100 != 0 {
-            let output = Command::new(&candidate).output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(output.stdout, b"before");
+            assert_exec_stdout(&candidate, b"before");
         }
         assert_eq!(
             fs::metadata(&candidate).unwrap().permissions().mode() & 0o7777,
@@ -47,7 +62,6 @@ fn snapshot_preserves_rwx_without_privilege_bits() {
 #[test]
 fn atomic_edit_preserves_rwx_without_privilege_bits() {
     use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
 
     for mode in [0o751, 0o7751, 0o640, 0o7640] {
         let tmp = tempfile::tempdir().unwrap();
@@ -64,18 +78,14 @@ fn atomic_edit_preserves_rwx_without_privilege_bits() {
             mode
         );
         if mode & 0o100 != 0 {
-            let output = Command::new(&candidate).output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(output.stdout, b"before");
+            assert_exec_stdout(&candidate, b"before");
         }
 
         let read = ws.read("script.sh").unwrap();
         let after = "#!/bin/sh\nprintf 'after'\n";
         ws.write("script.sh", after, Some(&read.sha256)).unwrap();
         if mode & 0o100 != 0 {
-            let output = Command::new(&candidate).output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(output.stdout, b"after");
+            assert_exec_stdout(&candidate, b"after");
         }
         assert_eq!(
             fs::metadata(&candidate).unwrap().permissions().mode() & 0o7777,
