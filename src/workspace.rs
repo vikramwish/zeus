@@ -1,5 +1,4 @@
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -42,9 +41,9 @@ pub struct Workspace {
 
 pub fn digest(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let hash = Sha256::digest(bytes);
+    let hash = ring::digest::digest(&ring::digest::SHA256, bytes);
     let mut out = [0u8; 64];
-    for (i, &byte) in hash.iter().enumerate() {
+    for (i, &byte) in hash.as_ref().iter().enumerate() {
         out[i * 2] = HEX[(byte >> 4) as usize];
         out[i * 2 + 1] = HEX[(byte & 0x0f) as usize];
     }
@@ -307,8 +306,8 @@ fn open_regular_nofollow(path: &Path) -> std::io::Result<fs::File> {
     opts.open(path)
 }
 
-fn read_bounded_into(
-    path: &Path,
+fn read_open_bounded_into(
+    mut file: fs::File,
     limit: u64,
     meta: &fs::Metadata,
     out: &mut Vec<u8>,
@@ -324,8 +323,7 @@ fn read_bounded_into(
     if out.capacity() < needed {
         out.reserve(needed - out.capacity());
     }
-    open_regular_nofollow(path)
-        .map_err(|e| e.to_string())?
+    (&mut file)
         .take(limit + 1)
         .read_to_end(out)
         .map_err(|e| e.to_string())?;
@@ -333,6 +331,22 @@ fn read_bounded_into(
         return Err("file grew beyond limit".into());
     }
     Ok(())
+}
+
+fn read_bounded_into(
+    path: &Path,
+    limit: u64,
+    meta: &fs::Metadata,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        return Err("regular files only".into());
+    }
+    if meta.len() > limit {
+        return Err(format!("file exceeds {limit} byte limit"));
+    }
+    let file = open_regular_nofollow(path).map_err(|e| e.to_string())?;
+    read_open_bounded_into(file, limit, meta, out)
 }
 
 fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
@@ -397,9 +411,10 @@ fn walk_root(source: &Path, copy_root: Option<&Path>) -> Result<Inventory, Strin
     Ok(ctx.inv)
 }
 
-fn visit_regular_file(
+fn visit_open_regular_file(
     path: &Path,
     relative: &str,
+    file: fs::File,
     meta: &fs::Metadata,
     dir_created: &mut bool,
     ctx: &mut WalkCtx<'_>,
@@ -410,7 +425,7 @@ fn visit_regular_file(
     if meta.len() > MAX_FILE || ctx.total + meta.len() > MAX_TOTAL {
         return Err("snapshot byte limit exceeded; select a smaller target".into());
     }
-    read_bounded_into(path, MAX_FILE, meta, &mut ctx.scratch)?;
+    read_open_bounded_into(file, MAX_FILE, meta, &mut ctx.scratch)?;
     if ctx.copy_root.is_some() && ctx.scratch.len() as u64 != meta.len() {
         return Err("source changed during snapshot".into());
     }
@@ -428,14 +443,17 @@ fn visit_regular_file(
             }
             *dir_created = true;
         }
-        let mut file = OpenOptions::new()
+        let mut out_file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&target)
             .map_err(|e| e.to_string())?;
-        file.write_all(&ctx.scratch).map_err(|e| e.to_string())?;
+        out_file
+            .write_all(&ctx.scratch)
+            .map_err(|e| e.to_string())?;
         #[cfg(unix)]
-        file.set_permissions(sanitize_permissions(meta))
+        out_file
+            .set_permissions(sanitize_permissions(meta))
             .map_err(|e| e.to_string())?;
     }
     ctx.inv.entries.push(Entry {
@@ -445,6 +463,17 @@ fn visit_regular_file(
         kind: file_kind,
     });
     Ok(())
+}
+
+fn visit_regular_file(
+    path: &Path,
+    relative: &str,
+    meta: &fs::Metadata,
+    dir_created: &mut bool,
+    ctx: &mut WalkCtx<'_>,
+) -> Result<(), String> {
+    let file = open_regular_nofollow(path).map_err(|e| e.to_string())?;
+    visit_open_regular_file(path, relative, file, meta, dir_created, ctx)
 }
 
 fn walk_dir(
@@ -458,17 +487,17 @@ fn walk_dir(
             "directory depth limit exceeded ({MAX_DEPTH}); select a smaller target"
         ));
     }
-    let mut names = Vec::new();
+    let mut entries = Vec::new();
     for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
-        names.push(entry.file_name());
-        if names.len() > 10_000 {
+        entries.push((entry.file_name(), entry.file_type().ok()));
+        if entries.len() > 10_000 {
             return Err("directory entry limit exceeded".into());
         }
     }
-    names.sort();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
     let mut dir_created = rel_prefix.is_empty();
-    for os_name in names {
+    for (os_name, ft) in entries {
         let name = os_name.to_str().ok_or("non-UTF8 filename")?;
         let relative = if rel_prefix.is_empty() {
             name.to_owned()
@@ -477,22 +506,61 @@ fn walk_dir(
         };
         if excluded(name) {
             ctx.inv.skipped.push(relative);
+        } else if ft.is_some_and(|t| t.is_symlink()) {
+            ctx.inv.skipped.push(format!("{relative} (symlink)"));
         } else {
             let child = dir.join(name);
-            let meta = fs::symlink_metadata(&child).map_err(|e| e.to_string())?;
-            if meta.file_type().is_symlink() {
-                ctx.inv.skipped.push(format!("{relative} (symlink)"));
-            } else if meta.is_dir() {
-                walk_dir(&child, &relative, depth + 1, ctx)?;
-            } else if meta.is_file() {
-                visit_regular_file(&child, &relative, &meta, &mut dir_created, ctx)?;
+            if ft.is_some_and(|t| t.is_file()) {
+                match open_regular_nofollow(&child) {
+                    Ok(file) => {
+                        let meta = file.metadata().map_err(|e| e.to_string())?;
+                        if meta.is_file() {
+                            visit_open_regular_file(
+                                &child,
+                                &relative,
+                                file,
+                                &meta,
+                                &mut dir_created,
+                                ctx,
+                            )?;
+                        } else {
+                            ctx.inv.skipped.push(format!("{relative} (not regular)"));
+                        }
+                    }
+                    #[cfg(unix)]
+                    Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+                        ctx.inv.skipped.push(format!("{relative} (symlink)"));
+                    }
+                    Err(e) => return Err(e.to_string()),
+                }
             } else {
-                ctx.inv.skipped.push(format!("{relative} (not regular)"));
+                let meta = fs::symlink_metadata(&child).map_err(|e| e.to_string())?;
+                if meta.file_type().is_symlink() {
+                    ctx.inv.skipped.push(format!("{relative} (symlink)"));
+                } else if meta.is_dir() {
+                    walk_dir(&child, &relative, depth + 1, ctx)?;
+                } else if meta.is_file() {
+                    visit_regular_file(&child, &relative, &meta, &mut dir_created, ctx)?;
+                } else {
+                    ctx.inv.skipped.push(format!("{relative} (not regular)"));
+                }
             }
         }
         if ctx.inv.skipped.len() > MAX_FILES {
             return Err("too many skipped entries".into());
         }
+    }
+    Ok(())
+}
+
+fn check_clean_text(text: &str) -> Result<(), String> {
+    if text.as_bytes().contains(&0) {
+        return Err("binary file: use artifact analysis tools".into());
+    }
+    if let Some(kind) = secret_like(text) {
+        return Err(format!(
+            "file contains secret-like content ({kind}); it stays in the candidate but is not shown to the model"
+        ));
     }
     Ok(())
 }
@@ -570,11 +638,7 @@ impl Workspace {
         }
         let content = String::from_utf8(bytes)
             .map_err(|_| "binary file: use artifact analysis tools".to_string())?;
-        if let Some(kind) = secret_like(&content) {
-            return Err(format!(
-                "file contains secret-like content ({kind}); it stays in the candidate but is not shown to the model"
-            ));
-        }
+        check_clean_text(&content)?;
         let sha256 = digest(content.as_bytes());
         Ok(ReadResult { content, sha256 })
     }
@@ -659,12 +723,17 @@ impl Workspace {
         let mut matches = Vec::new();
         let mut skipped = Vec::new();
         let mut truncation_reason = None;
-        let mut pending = std::collections::BTreeSet::from([String::new()]);
+        // Tuple `(path, kind_hint)` keeps exact `path` ordering while avoiding
+        // redundant `symlink_metadata` lookups for `d_type`-confirmed files/symlinks.
+        const HINT_UNKNOWN: u8 = 0;
+        const HINT_FILE: u8 = 1;
+        const HINT_SYMLINK: u8 = 2;
+        let mut pending = std::collections::BTreeSet::from([(String::new(), HINT_UNKNOWN)]);
         let mut entries = 0;
         let mut files = 0;
         let mut bytes = 0u64;
         let mut scratch = Vec::with_capacity(64 * 1024);
-        'paths: while let Some(path) = pending.pop_first() {
+        'paths: while let Some((path, hint)) = pending.pop_first() {
             if skipped.len() == MAX_RESULTS {
                 truncation_reason = Some("diagnostic limit");
                 break;
@@ -680,9 +749,37 @@ impl Workspace {
                     }));
                     continue;
                 }
+                if hint == HINT_SYMLINK {
+                    skipped.push(serde_json::json!({"path": path, "reason": "symlinks forbidden"}));
+                    continue;
+                }
                 self.root.join(&path)
             };
-            let meta = fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
+            if hint == HINT_FILE && (files == MAX_FILES || bytes + MAX_TEXT as u64 > MAX_TOTAL) {
+                truncation_reason = Some("file or byte limit");
+                break;
+            }
+            let (file, meta) = if hint == HINT_FILE {
+                match open_regular_nofollow(&target) {
+                    Ok(file) => {
+                        let meta = file.metadata().map_err(|e| e.to_string())?;
+                        (Some(file), meta)
+                    }
+                    #[cfg(unix)]
+                    Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+                        skipped.push(
+                            serde_json::json!({"path": path, "reason": "symlinks forbidden"}),
+                        );
+                        continue;
+                    }
+                    Err(e) => return Err(e.to_string()),
+                }
+            } else {
+                (
+                    None,
+                    fs::symlink_metadata(&target).map_err(|e| e.to_string())?,
+                )
+            };
             if meta.file_type().is_symlink() {
                 skipped.push(serde_json::json!({"path": path, "reason": "symlinks forbidden"}));
                 continue;
@@ -701,15 +798,21 @@ impl Workspace {
                     break;
                 }
                 for child in children {
+                    let child_hint = match child.file_type() {
+                        Ok(ft) if ft.is_file() => HINT_FILE,
+                        Ok(ft) if ft.is_symlink() => HINT_SYMLINK,
+                        _ => HINT_UNKNOWN,
+                    };
                     let name = child
                         .file_name()
                         .into_string()
                         .map_err(|_| "non-UTF8 path")?;
-                    pending.insert(if path.is_empty() {
+                    let next = if path.is_empty() {
                         name
                     } else {
                         format!("{path}/{name}")
-                    });
+                    };
+                    pending.insert((next, child_hint));
                 }
                 continue;
             }
@@ -726,7 +829,19 @@ impl Workspace {
                 skipped.push(serde_json::json!({"path": path, "reason": "file exceeds 131072 byte text limit"}));
                 continue;
             }
-            if let Err(reason) = read_bounded_into(&target, MAX_TEXT as u64, &meta, &mut scratch) {
+            let file = match file {
+                Some(f) => f,
+                None => match open_regular_nofollow(&target) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        bytes += MAX_TEXT as u64;
+                        skipped.push(serde_json::json!({"path": path, "reason": e.to_string()}));
+                        continue;
+                    }
+                },
+            };
+            if let Err(reason) = read_open_bounded_into(file, MAX_TEXT as u64, &meta, &mut scratch)
+            {
                 bytes += MAX_TEXT as u64;
                 skipped.push(serde_json::json!({"path": path, "reason": reason}));
                 continue;
@@ -747,14 +862,9 @@ impl Workspace {
                 }));
                 continue;
             };
-            if let Some(kind) = secret_like(text) {
+            if let Err(reason) = check_clean_text(text) {
                 bytes += MAX_TEXT as u64;
-                skipped.push(serde_json::json!({
-                    "path": path,
-                    "reason": format!(
-                        "file contains secret-like content ({kind}); it stays in the candidate but is not shown to the model"
-                    )
-                }));
+                skipped.push(serde_json::json!({"path": path, "reason": reason}));
                 continue;
             }
             bytes += text.len() as u64;

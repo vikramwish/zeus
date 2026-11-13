@@ -9,7 +9,6 @@ description = "Evidence-driven native agent runtime with bounded workers and lea
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "2.12.1", features = ["json"] }
-sha2 = "0.10"
 libc = "0.2"
 base64 = "0.22"
 ring = "0.17"
@@ -17,7 +16,9 @@ url = "2.5"
 
 [dev-dependencies]
 tempfile = "3"
+sha2 = "0.10"
 
 [profile.release]
 lto = "thin"
+codegen-units = 1
 strip = true

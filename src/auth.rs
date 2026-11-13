@@ -478,8 +478,8 @@ fn id_claims(
     require_nonce: bool,
     access: &str,
 ) -> Result<Claims> {
+    use ring::digest::{digest, SHA256};
     use ring::signature::{RsaPublicKeyComponents, RSA_PKCS1_2048_8192_SHA256};
-    use sha2::{Digest, Sha256};
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 || token.len() > 32768 {
         return Err(AuthError::InvalidToken);
@@ -541,11 +541,9 @@ fn id_claims(
     {
         return Err(AuthError::InvalidToken);
     }
-    if claims
-        .at_hash
-        .as_deref()
-        .is_some_and(|h| h != URL_SAFE_NO_PAD.encode(&Sha256::digest(access.as_bytes())[..16]))
-    {
+    if claims.at_hash.as_deref().is_some_and(|h| {
+        h != URL_SAFE_NO_PAD.encode(&digest(&SHA256, access.as_bytes()).as_ref()[..16])
+    }) {
         return Err(AuthError::InvalidToken);
     }
     Ok(claims)
@@ -601,7 +599,6 @@ fn issued_client(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 fn summary(saved: &Saved) -> AuthStatus {
-    use sha2::{Digest, Sha256};
     let usable = saved
         .credentials
         .as_ref()
@@ -613,7 +610,10 @@ fn summary(saved: &Saved) -> AuthStatus {
         account_label: saved.registration.as_ref().map(|r| {
             format!(
                 "chatgpt-{}",
-                &URL_SAFE_NO_PAD.encode(Sha256::digest(r.client_id.as_bytes()))[..12]
+                &URL_SAFE_NO_PAD.encode(ring::digest::digest(
+                    &ring::digest::SHA256,
+                    r.client_id.as_bytes()
+                ))[..12]
             )
         }),
     }
@@ -752,7 +752,6 @@ pub fn login<F>(store: &AuthStore, mode: LoginMode, present: F) -> Result<AuthSt
 where
     F: FnOnce(&str) -> Result<()>,
 {
-    use sha2::{Digest, Sha256};
     let _lock = store.lock()?;
     let mut saved = store.load()?;
     let registered = if mode == LoginMode::Continue {
@@ -772,7 +771,10 @@ where
             .port()
     );
     let (state, nonce, verifier) = (random()?, random()?, random()?);
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let challenge = URL_SAFE_NO_PAD.encode(ring::digest::digest(
+        &ring::digest::SHA256,
+        verifier.as_bytes(),
+    ));
     let mut url = url::Url::parse(&store.endpoint(AUTHORIZE)).map_err(|_| AuthError::Network)?;
     let client = registered
         .map(|r| r.client_id.as_str())
