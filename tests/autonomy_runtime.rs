@@ -191,7 +191,7 @@ fn configured_repair_budget_controls_autonomous_retry_count() {
             true,
             |_, _| json!({"role":"assistant","content":"unable to repair fixture"}),
         );
-        assert_eq!(report["status"], "failed");
+        assert_eq!(report["status"], "failed", "{report:#}");
         assert_eq!(count, max_repairs + 1);
         assert_eq!(report["attempts"], max_repairs + 1);
     }

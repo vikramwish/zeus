@@ -35,45 +35,103 @@ fn select_backend() -> Result<Backend, String> {
     Err("sandbox unavailable: execution is supported only on macOS (Seatbelt) and Linux (bubblewrap)".into())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SystemEntry {
+    Dir(PathBuf),
+    Symlink { link: PathBuf, target: PathBuf },
+}
+
+fn validate_path_str(path: &Path, require_absolute: bool) -> Result<String, String> {
+    let s = path.to_str().ok_or("non-UTF8 sandbox path")?;
+    if s.contains(['\n', '\r', '\0']) || s.is_empty() || (require_absolute && !path.is_absolute()) {
+        return Err("invalid sandbox path".into());
+    }
+    Ok(s.to_owned())
+}
+
+fn discover_system_entries() -> Result<Vec<SystemEntry>, String> {
+    let mut entries = Vec::new();
+    for dir in [
+        "/usr", "/lib", "/lib64", "/lib32", "/bin", "/sbin", "/etc", "/opt", "/nix",
+    ] {
+        let Ok(meta) = fs::symlink_metadata(dir) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            // Preserve merged-/usr symlinks (e.g. /lib -> usr/lib) instead of
+            // bind-mounting a host symlink target on newer bubblewrap releases.
+            if Path::new(dir).is_dir() {
+                let target = fs::read_link(dir).map_err(|e| format!("sandbox link {dir}: {e}"))?;
+                entries.push(SystemEntry::Symlink {
+                    link: PathBuf::from(dir),
+                    target,
+                });
+            }
+        } else if meta.is_dir() {
+            entries.push(SystemEntry::Dir(PathBuf::from(dir)));
+        }
+    }
+    Ok(entries)
+}
+
 /// bubblewrap arguments mirroring the Seatbelt profile: read-only system
-/// directories that exist on this host, the executable, launcher and explicit
-/// external files read-only, only the candidate writable, inert home, no
-/// network or other inherited namespaces. Pure so it can be tested anywhere.
+/// directories that exist on this host (preserving merged-/usr symlinks),
+/// the executable, launcher and explicit external files read-only, only the
+/// candidate writable, inert read-only tmpfs home, no network or other
+/// inherited namespaces. Pure given resolved host system entries.
 pub fn bubblewrap_args(
     root: &Path,
     executable: &Path,
     launcher: &Path,
     files: &[PathBuf],
 ) -> Result<Vec<String>, String> {
-    fn plain(path: &Path) -> Result<String, String> {
-        let s = path.to_str().ok_or("non-UTF8 sandbox path")?;
-        if s.contains(['\n', '\r', '\0']) || s.is_empty() || !path.is_absolute() {
-            return Err("invalid sandbox path".into());
-        }
-        Ok(s.to_owned())
-    }
+    let system_entries = discover_system_entries()?;
+    bubblewrap_args_with_entries(root, executable, launcher, files, &system_entries)
+}
+
+fn bubblewrap_args_with_entries(
+    root: &Path,
+    executable: &Path,
+    launcher: &Path,
+    files: &[PathBuf],
+    system_entries: &[SystemEntry],
+) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = ["--unshare-all", "--die-with-parent", "--new-session"]
         .map(String::from)
         .to_vec();
     args.extend(["--dev", "/dev", "--proc", "/proc"].map(String::from));
-    for dir in [
-        "/usr", "/lib", "/lib64", "/lib32", "/bin", "/sbin", "/etc", "/opt", "/nix",
-    ] {
-        if Path::new(dir).is_dir() {
-            args.extend(["--ro-bind", dir, dir].map(String::from));
+    let mut bound_dirs = Vec::new();
+    for entry in system_entries {
+        match entry {
+            SystemEntry::Dir(dir) => {
+                let s = validate_path_str(dir, true)?;
+                args.extend(["--ro-bind".into(), s.clone(), s]);
+                bound_dirs.push(dir.as_path());
+            }
+            SystemEntry::Symlink { link, target } => {
+                args.extend([
+                    "--symlink".into(),
+                    validate_path_str(target, false)?,
+                    validate_path_str(link, true)?,
+                ]);
+            }
         }
     }
     for file in [executable, launcher]
         .into_iter()
         .chain(files.iter().map(PathBuf::as_path))
     {
-        let p = plain(file)?;
-        args.extend(["--ro-bind".into(), p.clone(), p]);
+        let p = validate_path_str(file, true)?;
+        // Avoid redundant nested bind mounts inside an already read-only system directory.
+        if !bound_dirs.iter().any(|dir| file.starts_with(dir)) {
+            args.extend(["--ro-bind".into(), p.clone(), p]);
+        }
     }
-    let root = plain(root)?;
+    let root = validate_path_str(root, true)?;
     args.extend(["--bind".into(), root.clone(), root.clone()]);
     args.extend(["--chdir".into(), root]);
-    args.extend(["--dir", "/var/empty", "--remount-ro", "/var/empty"].map(String::from));
+    // Mount a dedicated tmpfs at /var/empty so --remount-ro has a real mount point.
+    args.extend(["--tmpfs", "/var/empty", "--remount-ro", "/var/empty"].map(String::from));
     Ok(args)
 }
 
@@ -315,6 +373,46 @@ fn seatbelt_profile(
     Ok(profile)
 }
 
+#[cfg(unix)]
+unsafe fn ensure_cloexec(fd: i32) -> std::io::Result<()> {
+    let flags = libc::fcntl(fd, libc::F_GETFD);
+    if flags != -1
+        && (flags & libc::FD_CLOEXEC) == 0
+        && libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) == -1
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn non_cloexec_fds(launch_fd: i32) -> Vec<i32> {
+    let mut fds = Vec::new();
+    for dir in ["/dev/fd", "/proc/self/fd"] {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Some(fd) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.parse::<i32>().ok())
+            else {
+                continue;
+            };
+            if fd < 3 || fd == launch_fd {
+                continue;
+            }
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+            if flags != -1 && (flags & libc::FD_CLOEXEC) == 0 {
+                fds.push(fd);
+            }
+        }
+        break;
+    }
+    fds
+}
+
 /// Shared supervision for every backend: launch handshake, output capture
 /// with deadline and size bounds, CPU/file/descriptor limits, process-group
 /// cleanup, and cancellation.
@@ -328,12 +426,23 @@ fn supervise(
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
+        let extra_fds = non_cloexec_fds(launch_fd);
         unsafe {
             command.pre_exec(move || {
                 // Only this child inherits the channel through sandbox-exec;
                 // the helper restores CLOEXEC before executing verifier code.
                 if libc::fcntl(launch_fd, libc::F_SETFD, 0) == -1 {
                     return Err(std::io::Error::last_os_error());
+                }
+                // Prevent parent-inherited descriptors (e.g. IDE/CI sockets)
+                // from leaking into the sandbox or verifier child on exec.
+                for &fd in extra_fds.iter() {
+                    ensure_cloexec(fd)?;
+                }
+                for fd in 3..256 {
+                    if fd != launch_fd {
+                        ensure_cloexec(fd)?;
+                    }
                 }
                 if libc::setpgid(0, 0) != 0 {
                     return Err(std::io::Error::last_os_error());
@@ -444,4 +553,57 @@ fn supervise(
         timed_out,
         output_limit,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bubblewrap_args_with_entries, SystemEntry};
+    use std::path::PathBuf;
+
+    #[test]
+    fn bubblewrap_preserves_merged_usr_symlinks_and_skips_nested_ro_file_bind() {
+        let entries = vec![
+            SystemEntry::Dir(PathBuf::from("/usr")),
+            SystemEntry::Symlink {
+                link: PathBuf::from("/lib"),
+                target: PathBuf::from("usr/lib"),
+            },
+            SystemEntry::Symlink {
+                link: PathBuf::from("/lib64"),
+                target: PathBuf::from("usr/lib64"),
+            },
+            SystemEntry::Symlink {
+                link: PathBuf::from("/bin"),
+                target: PathBuf::from("usr/bin"),
+            },
+            SystemEntry::Dir(PathBuf::from("/etc")),
+        ];
+        let args = bubblewrap_args_with_entries(
+            &PathBuf::from("/tmp/work/candidate"),
+            &PathBuf::from("/usr/bin/python3.14"),
+            &PathBuf::from("/tmp/zeus"),
+            &[PathBuf::from("/tmp/verify.py")],
+            &entries,
+        )
+        .unwrap();
+        let joined = args.join(" ");
+        assert!(joined.contains("--ro-bind /usr /usr"), "{joined}");
+        assert!(joined.contains("--symlink usr/lib /lib"), "{joined}");
+        assert!(joined.contains("--symlink usr/lib64 /lib64"), "{joined}");
+        assert!(joined.contains("--symlink usr/bin /bin"), "{joined}");
+        assert!(!joined.contains("--ro-bind /lib /lib"), "{joined}");
+        assert!(
+            !joined.contains("--ro-bind /usr/bin/python3.14 /usr/bin/python3.14"),
+            "{joined}"
+        );
+        assert!(joined.contains("--ro-bind /tmp/zeus /tmp/zeus"), "{joined}");
+        assert!(
+            joined.contains("--ro-bind /tmp/verify.py /tmp/verify.py"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("--tmpfs /var/empty --remount-ro /var/empty"),
+            "{joined}"
+        );
+    }
 }

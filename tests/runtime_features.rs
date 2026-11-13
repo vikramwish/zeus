@@ -1,4 +1,5 @@
 //! Deterministic HTTP fixture: integration proof, not model intelligence.
+mod common;
 use serde_json::{json, Value};
 use std::{
     io::{Read, Write},
@@ -173,7 +174,7 @@ fn cli_connects_context_skills_search_edit_and_raw_verifier_evidence() {
     });
     let state = temp.path().join("state");
     let job = temp.path().join("job.json");
-    std::fs::write(&job,json!({"task":"Repair main.txt","source":source,"state_dir":state,"endpoint":endpoint,"model":"scripted-protocol-fixture","max_turns":4,"verifier":["/opt/homebrew/bin/python3","-I",verifier],"verifier_timeout":5}).to_string()).unwrap();
+    std::fs::write(&job,json!({"task":"Repair main.txt","source":source,"state_dir":state,"endpoint":endpoint,"model":"scripted-protocol-fixture","max_turns":4,"verifier":[common::python3(),"-I",verifier],"verifier_timeout":5}).to_string()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_zeus"))
         .arg("run")
         .arg(job)
