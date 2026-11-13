@@ -65,7 +65,10 @@ def verify(screenshots_dir: Path | None) -> None:
                 assert not overflow_info, f"{label}: horizontal overflow detected: {overflow_info}"
 
                 # Lab 1: FIFO Scheduler interactions & empty validation state
-                assert "266" in page.locator("#meta-tests").inner_text() or "suites" in page.locator("#meta-tests").inner_text()
+                meta_tests_text = page.locator("#meta-tests").inner_text()
+                assert "269" in meta_tests_text and "48 suites" in meta_tests_text, (
+                    f"{label}: unexpected test summary {meta_tests_text!r}"
+                )
                 page.locator("[data-sched-k='2']").click()
                 page.locator("#sched-durations").fill("")
                 assert not page.locator("#sched-error").is_hidden(), f"{label}: empty scheduler error missing"

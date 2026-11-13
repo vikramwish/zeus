@@ -9,7 +9,37 @@ const MAX_SOURCE_BYTES: usize = 4096;
 const MAX_LIMITATIONS: usize = 32;
 const MAX_LIMITATION_BYTES: usize = 2048;
 
+enum SourceIndex<'a> {
+    Set(std::collections::HashSet<&'a str>),
+    Slice(&'a [String]),
+}
+
+impl<'a> SourceIndex<'a> {
+    fn new(known_sources: &'a [String], findings_len: usize) -> Self {
+        if known_sources.len() > 16 && findings_len > 1 {
+            Self::Set(known_sources.iter().map(String::as_str).collect())
+        } else {
+            Self::Slice(known_sources)
+        }
+    }
+
+    fn contains(&self, source: &str) -> bool {
+        match self {
+            Self::Set(set) => set.contains(source),
+            Self::Slice(slice) => slice.iter().any(|s| s == source),
+        }
+    }
+}
+
 pub fn validate_findings(findings: &[Finding], known_sources: &[String]) -> Result<(), String> {
+    let index = SourceIndex::new(known_sources, findings.len());
+    validate_findings_lookup(findings, |source| index.contains(source))
+}
+
+pub(crate) fn validate_findings_lookup(
+    findings: &[Finding],
+    has_source: impl Fn(&str) -> bool,
+) -> Result<(), String> {
     if findings.len() > MAX_FINDINGS {
         return Err("finding count limit exceeded".into());
     }
@@ -29,8 +59,7 @@ pub fn validate_findings(findings: &[Finding], known_sources: &[String]) -> Resu
         }
         let unsourced_unknown =
             matches!(finding.kind, EvidenceKind::Unknown) && finding.source.is_empty();
-        if !unsourced_unknown
-            && (finding.source.trim().is_empty() || !known_sources.contains(&finding.source))
+        if !unsourced_unknown && (finding.source.trim().is_empty() || !has_source(&finding.source))
         {
             return Err(format!(
                 "finding {index}: source must exactly match a known source ID"
@@ -52,7 +81,17 @@ pub fn write_report(
     findings: &[Finding],
     known_sources: &[String],
 ) -> Result<(), String> {
-    validate_findings(findings, known_sources)?;
+    let index = SourceIndex::new(known_sources, findings.len());
+    write_report_checked(path, target, findings, |source| index.contains(source))
+}
+
+pub(crate) fn write_report_checked(
+    path: &Path,
+    target: &str,
+    findings: &[Finding],
+    has_source: impl Fn(&str) -> bool,
+) -> Result<(), String> {
+    validate_findings_lookup(findings, has_source)?;
     #[derive(Serialize)]
     struct Report<'a> {
         target: &'a str,

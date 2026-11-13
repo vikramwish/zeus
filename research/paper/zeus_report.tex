@@ -75,7 +75,7 @@
 \renewcommand{\headrulewidth}{0.5pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{zeusRule}\leaders\hrule height \headrulewidth\hfill}}
 \fancyhead[L]{\footnotesize\sffamily\color{zeusMuted}ZEUS TECHNICAL REPORT TR-01}
-\fancyhead[R]{\footnotesize\ttfamily\color{zeusMuted}HEAD 9dbba43 $\cdot$ github.com/vikramwish/zeus}
+\fancyhead[R]{\footnotesize\ttfamily\color{zeusMuted}HEAD 0692fa6+ $\cdot$ github.com/vikramwish/zeus}
 \fancyfoot[C]{\footnotesize\sffamily\color{zeusMuted}Page \thepage\ of \pageref{LastPage}}
 
 \tcbuselibrary{skins,breakable}
@@ -136,7 +136,7 @@
   {\color{white!30!zeusNight}\rule{\linewidth}{0.5pt}}\\[8pt]
   {\LARGE\sffamily\bfseries\color{white} Zeus: Bounded Concurrency and Fail-Closed Authority\\[2pt]
   for Verifiable Agentic Coding}\\[8pt]
-  {\small\sffamily\color{zeusMuted} Author: Vikram Viswanath \quad$\cdot$\quad Repository Snapshot: \code{9dbba43} (2026-11-13) \quad$\cdot$\quad Implementation: 7,245 LOC Rust, 266 Tests}
+  {\small\sffamily\color{zeusMuted} Author: Vikram Viswanath \quad$\cdot$\quad Repository Snapshot: \code{0692fa6+} (2026-11-13) \quad$\cdot$\quad Implementation: 7,852 LOC Rust, 269 Tests}
 \end{tcolorbox}
 
 \vspace{4pt}
@@ -158,12 +158,12 @@
   bottom=8pt
 ]
 \textbf{\sffamily\color{zeusBolt} Abstract.}\quad
-Autonomous coding agents routinely conflate natural-language model output with system authority: they allow generated tool requests to escape declared paths, waste multi-core capacity behind synchronous batch barriers, or corrupt adaptive routing state whenever transient network timeouts occur. \textbf{Zeus} is a standalone Rust runtime ($7{,}245$ lines across $18$ modules) that separates untrusted model reasoning from host capability enforcement, OS-level sandboxing, and verification-gated policy learning.
+Autonomous coding agents routinely conflate natural-language model output with system authority: they allow generated tool requests to escape declared paths, waste multi-core capacity behind synchronous batch barriers, or corrupt adaptive routing state whenever transient network timeouts occur. \textbf{Zeus} is a standalone Rust runtime ($7{,}852$ lines across $18$ modules) that separates untrusted model reasoning from host capability enforcement, OS-level sandboxing, and verification-gated policy learning.
 
-Zeus bounds parallel coding to $1$--$3$ workers executing over a work-conserving FIFO queue with global pre-admission scope checking, ensuring exact-file disjointness and fail-closed rejection before any worker thread spawns. Candidate mutations exclude secret-like files and expose zero write authority over the external verifier or state directory, which run inside macOS Seatbelt or Linux \code{bubblewrap} profiles. Strategy selection between a direct implementer and parallel workers uses a deterministic UCB1 contextual bandit updated \emph{strictly} on verified pass or verified fail outcomes, paired with an experimental shadow-only outcome scorer (\emph{Zeus Judge}) governed by eight abstention gates. The implementation is verified deterministically by $266$ static Rust tests across $46$ suites requiring no live LLM, and evaluated across $14$ exploratory local Qwen~3.5-9B field trials showing $0/10$ infrastructure errors contaminating routing tables.\\[5pt]
+Zeus bounds parallel coding to $1$--$3$ workers executing over a work-conserving FIFO queue with global pre-admission scope checking, ensuring exact-file disjointness and fail-closed rejection before any worker thread spawns. Candidate mutations exclude secret-like files and expose zero write authority over the external verifier or state directory, which run inside macOS Seatbelt or Linux \code{bubblewrap} profiles. Strategy selection between a direct implementer and parallel workers uses a deterministic UCB1 contextual bandit updated \emph{strictly} on verified pass or verified fail outcomes, paired with an experimental shadow-only outcome scorer (\emph{Zeus Judge}) governed by eight abstention gates. The implementation is verified deterministically by $269$ static Rust tests across $48$ suites requiring no live LLM, and evaluated across $14$ exploratory local Qwen~3.5-9B field trials showing $0/10$ infrastructure errors contaminating routing tables.\\[5pt]
 {\color{zeusRule}\rule{\linewidth}{0.5pt}}\\[4pt]
 {\footnotesize\textbf{\sffamily\color{zeusSlate} Reproducibility Artifacts.}\quad
-All figures render deterministically from Rust source \& test inspection plus \code{research/data/field\_runs.json} via \code{research/scripts/build\_figures.py}. Companion materials: \code{research/index.html} (interactive lab), \code{research/REPORT.md}, \code{DESIGN.md}, and \code{cargo test --locked} (rev.\ \code{9dbba43}).}
+All figures render deterministically from Rust source \& test inspection plus \code{research/data/field\_runs.json} via \code{research/scripts/build\_figures.py}. Companion materials: \code{research/index.html} (interactive lab), \code{research/REPORT.md}, \code{DESIGN.md}, and \code{cargo test --locked} (rev.\ \code{0692fa6+}).}
 \end{tcolorbox}
 
 \clearpage
@@ -180,7 +180,7 @@ Multi-step coding agents sit on an awkward fault line between stochastic token g
   \item \textbf{Unbounded transcript and handoff growth}: multi-worker aggregation or multi-turn file reads blow provider context windows, causing silent truncation or mid-run abandonment.
 \end{enumerate}
 
-Zeus (\code{github.com/vikramwish/zeus}) treats these failure modes as systems engineering invariants rather than prompt-engineering problems. Designed after direct inspection of local agent runtime ancestors (\emph{Hermes} revisions \code{bf0203a7} / \code{c419cf7c} and \emph{Prime} revisions \code{c4c238ca} / \code{c6d4da94}), Zeus is implemented from scratch in Rust~2021 (MSRV~1.85) with explicit dependency minimalism (\code{serde}, \code{serde\_json}, \code{ureq}, \code{sha2}, \code{libc}, \code{base64}, \code{ring}, \code{url}).
+Zeus (\code{github.com/vikramwish/zeus}) treats these failure modes as systems engineering invariants rather than prompt-engineering problems. Designed after direct inspection of local agent runtime ancestors (\emph{Hermes} revisions \code{bf0203a7} / \code{c419cf7c} and \emph{Prime} revisions \code{c4c238ca} / \code{c6d4da94}), Zeus is implemented from scratch in Rust~2021 (MSRV~1.85) with explicit dependency minimalism (\code{serde}, \code{serde\_json}, \code{ureq}, \code{libc}, \code{base64}, \code{ring}, \code{url}; with \code{sha2} retained solely in dev-dependencies for vector cross-checks).
 
 \begin{figure}[htbp]
   \centering
@@ -253,7 +253,7 @@ Verification runs outside both the model loop and candidate ownership assumption
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Core runtime memory, concurrency, and extension bounds enforced in code (\code{HEAD 9dbba43}).}
+  \caption{Core runtime memory, concurrency, and extension bounds enforced in code (\code{HEAD 0692fa6+}).}
   \label{tab:bounds}
   \begin{tabularx}{\textwidth}{@{}llrL@{}}
     \toprule
@@ -319,14 +319,14 @@ Figure~\ref{fig:trials} reveals two findings:
 \section{Deterministic Verification Corpus}
 \label{sec:tests}
 
-To decouple systems correctness from model availability, Zeus ships a static suite of $266$ \code{\#[test]} functions spanning $44$ integration test files under \code{tests/} plus $3$ inline unit tests in \code{src/runtime.rs} and $1$ unit test in \code{src/process.rs} ($46$ suites total; $2$ tests marked \code{\#[ignore]} for explicit opt-in runs alongside OS-gated Seatbelt/\code{bubblewrap} checks).
+To decouple systems correctness from model availability, Zeus ships a static suite of $269$ \code{\#[test]} functions spanning $44$ integration test files under \code{tests/} plus $3$ inline unit tests in \code{src/runtime.rs}, $2$ in \code{src/workspace.rs}, $1$ in \code{src/process.rs}, and $1$ in \code{src/output.rs} ($48$ suites total; $2$ tests marked \code{\#[ignore]} for explicit opt-in runs alongside OS-gated Seatbelt/\code{bubblewrap} checks).
 
-Figure~\ref{fig:tests} details test allocation across nine subsystems, led by model protocol, retry, and compaction coverage ($58$ tests), workspace/secret/output guards ($40$), plugins/MCP/analyzers ($39$), sandboxes/verifier/interruption ($37$), and policy/judge/evidence checks ($30$). Dedicated process-safety tests assert clean file-descriptor hygiene, verifying that external verifiers do not inherit open host sockets or launch channels when spawned cleanly.
+Figure~\ref{fig:tests} details test allocation across nine subsystems, led by model protocol, retry, and compaction coverage ($58$ tests), workspace/secret/output guards ($43$), plugins/MCP/analyzers ($39$), sandboxes/verifier/interruption ($38$), and policy/judge/evidence checks ($30$). Dedicated process-safety tests assert clean file-descriptor hygiene, verifying that external verifiers do not inherit open host sockets or launch channels when spawned cleanly.
 
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=\textwidth]{figures/fig6-tests.pdf}
-  \caption{Static breakdown of Zeus's $266$ deterministic Rust tests grouped into nine architectural subsystems on revision \code{9dbba43}.}
+  \caption{Static breakdown of Zeus's $269$ deterministic Rust tests grouped into nine architectural subsystems on revision \code{0692fa6+}.}
   \label{fig:tests}
 \end{figure}
 

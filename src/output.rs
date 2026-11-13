@@ -1,5 +1,44 @@
 //! Conservative, local, model-facing presentation; not reward evidence.
+use serde::Serialize;
 use serde_json::Value;
+use std::fmt::Write as _;
+use std::io;
+
+/// Compute the compact JSON byte length of `value`, aborting as soon as it exceeds `limit`.
+pub(crate) fn json_len_within<T: Serialize + ?Sized>(
+    value: &T,
+    limit: usize,
+) -> Result<Option<usize>, String> {
+    struct LimitedCounter {
+        count: usize,
+        limit: usize,
+        exceeded: bool,
+    }
+    impl io::Write for LimitedCounter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let next = self.count.saturating_add(buf.len());
+            if next > self.limit {
+                self.exceeded = true;
+                return Err(io::Error::other("byte limit exceeded"));
+            }
+            self.count = next;
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = LimitedCounter {
+        count: 0,
+        limit,
+        exceeded: false,
+    };
+    match serde_json::to_writer(&mut counter, value) {
+        Ok(()) => Ok(Some(counter.count)),
+        Err(_) if counter.exceeded => Ok(None),
+        Err(_) => Err("invalid JSON".into()),
+    }
+}
 
 /// Model-facing projection only. The caller must durably retain the full result
 /// before handing us its audit ID. Keep both opening findings and closing caveats.
@@ -42,85 +81,111 @@ pub fn worker_handoff(index: usize, audit_event: &str, text: &str, tool_calls: u
 /// libtest stdout. Call only AFTER storing the raw audit evidence. All other
 /// fields (including stderr) and all unsupported/malformed output are unchanged.
 pub fn compact_verifier_result(value: &Value) -> Value {
-    let mut shown = value.clone();
-    if value.get("success").and_then(Value::as_bool) != Some(true)
-        || value.get("exit_code").and_then(Value::as_i64) != Some(0)
-        || value.get("timed_out").and_then(Value::as_bool) != Some(false)
-        || value.get("output_limit").and_then(Value::as_bool) != Some(false)
-        || value.get("stderr").and_then(Value::as_str).is_none()
-    {
-        return shown;
-    }
-    if let Some(raw) = value.get("stdout").and_then(Value::as_str) {
-        if let Some(compact) = compact_libtest(raw) {
-            shown["stdout"] = Value::String(compact);
+    if let Some(obj) = value.as_object() {
+        if obj.get("success").and_then(Value::as_bool) == Some(true)
+            && obj.get("exit_code").and_then(Value::as_i64) == Some(0)
+            && obj.get("timed_out").and_then(Value::as_bool) == Some(false)
+            && obj.get("output_limit").and_then(Value::as_bool) == Some(false)
+            && obj.get("stderr").and_then(Value::as_str).is_some()
+        {
+            if let Some(compact) = obj
+                .get("stdout")
+                .and_then(Value::as_str)
+                .and_then(compact_libtest)
+            {
+                let mut replacement = Some(compact);
+                let mut map = serde_json::Map::with_capacity(obj.len());
+                for (k, v) in obj {
+                    let val = if k == "stdout" {
+                        Value::String(replacement.take().unwrap_or_default())
+                    } else {
+                        v.clone()
+                    };
+                    map.insert(k.clone(), val);
+                }
+                return Value::Object(map);
+            }
         }
     }
-    shown
+    value.clone()
 }
 
 fn compact_libtest(raw: &str) -> Option<String> {
-    if raw.chars().any(|c| c.is_control() && c != '\n') {
+    if !raw.trim_start_matches('\n').starts_with("running ") {
         return None;
     }
-    let lines: Vec<&str> = raw.split_inclusive('\n').collect();
-    let mut out = String::with_capacity(raw.len());
-    let mut i = 0;
-    while i < lines.len() {
-        if lines[i] == "\n" {
-            out.push_str(lines[i]);
-            i += 1;
+    let mut lines = raw.split_inclusive('\n');
+    let mut raw_cursor = 0usize;
+    let mut out = String::with_capacity(256);
+    while let Some(line) = lines.next() {
+        raw_cursor += line.len();
+        if line == "\n" {
+            out.push('\n');
             continue;
         }
-        let header = lines[i];
-        let number = header.strip_prefix("running ")?;
-        let count: usize = number
-            .strip_suffix(" tests\n")
-            .or_else(|| number.strip_suffix(" test\n"))?
-            .parse()
-            .ok()?;
-        let noun = if count == 1 { "test" } else { "tests" };
-        if header != format!("running {count} {noun}\n") {
+        let header = line;
+        let rest = header.strip_prefix("running ")?;
+        let (num_str, tail) = rest.split_once(' ')?;
+        if num_str.is_empty()
+            || (num_str != "0" && num_str.starts_with('0'))
+            || !num_str.bytes().all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+        let count: usize = num_str.parse().ok()?;
+        let expected_tail = if count == 1 { "test\n" } else { "tests\n" };
+        if tail != expected_tail {
             return None;
         }
         out.push_str(header);
-        i += 1;
-        let start = i;
+        let block_start = raw_cursor;
         for _ in 0..count {
-            let name = lines
-                .get(i)?
-                .strip_prefix("test ")?
-                .strip_suffix(" ... ok\n")?;
-            if name.is_empty()
-                || !name
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
-            {
+            let test_line = lines.next()?;
+            raw_cursor += test_line.len();
+            let name = test_line.strip_prefix("test ")?.strip_suffix(" ... ok\n")?;
+            let valid_name = if name.is_ascii() {
+                !name.is_empty()
+                    && name
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b':')
+            } else {
+                !name.is_empty()
+                    && name
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+            };
+            if !valid_name {
                 return None;
             }
-            i += 1;
         }
-        let omitted_bytes: usize = lines[start..i].iter().map(|s| s.len()).sum();
-        let marker =
-            format!("[zeus: omitted {count} passing test lines; {omitted_bytes} UTF-8 bytes]\n");
-        if marker.len() < omitted_bytes {
-            out.push_str(&marker);
+        let omitted_bytes = raw_cursor - block_start;
+        // Exact marker byte length: static parts (47) + decimal(count) + decimal(omitted_bytes).
+        let marker_len = "[zeus: omitted  passing test lines;  UTF-8 bytes]\n".len()
+            + num_str.len()
+            + omitted_bytes.checked_ilog10().map_or(1, |d| d as usize + 1);
+        if marker_len < omitted_bytes {
+            let _ = writeln!(
+                out,
+                "[zeus: omitted {count} passing test lines; {omitted_bytes} UTF-8 bytes]"
+            );
         } else {
-            for line in &lines[start..i] {
-                out.push_str(line);
-            }
+            out.push_str(&raw[block_start..raw_cursor]);
         }
-        if *lines.get(i)? != "\n" {
+        let blank = lines.next()?;
+        raw_cursor += blank.len();
+        if blank != "\n" {
             return None;
         }
         out.push('\n');
-        i += 1;
-        let summary = *lines.get(i)?;
-        let prefix = format!("test result: ok. {count} passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in ");
-        let seconds = summary
+        let summary = lines.next()?;
+        raw_cursor += summary.len();
+        let after_prefix = summary
             .strip_suffix('\n')
             .unwrap_or(summary)
-            .strip_prefix(&prefix)?
+            .strip_prefix("test result: ok. ")?;
+        let after_num = after_prefix.strip_prefix(num_str)?;
+        let seconds = after_num
+            .strip_prefix(" passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in ")?
             .strip_suffix('s')?;
         let (whole, fraction) = seconds.split_once('.')?;
         if whole.is_empty()
@@ -131,7 +196,23 @@ fn compact_libtest(raw: &str) -> Option<String> {
             return None;
         }
         out.push_str(summary);
-        i += 1;
     }
     (out.len() < raw.len()).then_some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_len_within_returns_exact_length_and_stops_at_limit() {
+        let value = serde_json::json!({
+            "alpha": "hello world",
+            "numbers": [1, 2, 3, 4],
+        });
+        let expected = value.to_string().len();
+        assert_eq!(json_len_within(&value, expected).unwrap(), Some(expected));
+        assert_eq!(json_len_within(&value, expected - 1).unwrap(), None);
+        assert_eq!(json_len_within(&value, 0).unwrap(), None);
+    }
 }

@@ -1,8 +1,7 @@
 //! Experimental shadow-only outcome scoring. Never authorizes execution.
 //! Coefficients are supplied offline; scores are not calibrated confidence.
-use crate::{config::Job, policy::Strategy};
+use crate::{config::Job, policy::Strategy, workspace};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{fs::OpenOptions, io::Read, path::PathBuf};
 
 const MAX_MODEL_BYTES: u64 = 64 * 1024;
@@ -51,7 +50,7 @@ impl State {
                 f64::from(job.autonomy.max_total_tokens.is_some()),
                 job.max_job_seconds as f64 / 86400.0,
             ],
-            domain_sha256: format!("{:x}", Sha256::digest(domain.to_string().as_bytes())),
+            domain_sha256: workspace::digest(domain.to_string().as_bytes()),
             verifier_configured: !job.verifier.is_empty(),
         }
     }
@@ -220,7 +219,7 @@ pub fn evaluate(job: &Job, config: &Config, strategy: Strategy) -> (Record, Opti
             return (record, None);
         }
     };
-    record.model_sha256 = Some(format!("{:x}", Sha256::digest(&bytes)));
+    record.model_sha256 = Some(workspace::digest(&bytes));
     record.model_version = Some(model.model_version.clone());
     let score =
         || -> Result<(Vec<Estimate>, Decision), Reason> {

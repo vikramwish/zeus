@@ -246,7 +246,6 @@ fn validate_manifest(m: &Manifest, spec: &PluginSpec) -> Result<(), String> {
 }
 impl PluginSet {
     pub fn load(specs: &[PluginSpec], source: &Path, state: &Path) -> Result<Self, String> {
-        use sha2::{Digest, Sha256};
         let mut skills = Vec::new();
         let mut plugins = Vec::new();
         if specs.len() > 16 {
@@ -319,7 +318,10 @@ impl PluginSet {
                 let content = String::from_utf8(read_skill_file(directory, &skill.path)?)
                     .map_err(|_| "plugin skill is not UTF-8")?;
                 let name = format!("{}/{}", manifest.name, skill.name);
-                let source_id = format!("plugin:{name}#{:x}", Sha256::digest(content.as_bytes()));
+                let source_id = format!(
+                    "plugin:{name}#{}",
+                    crate::workspace::digest(content.as_bytes())
+                );
                 skills.push(Skill { metadata: json!({"name":name,"plugin":manifest.name,"source_id":source_id,"authority":"untrusted_plugin_data"}), content });
             }
         }

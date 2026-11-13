@@ -3,11 +3,11 @@
  */
 
 const REPORT_META = {
-  baselineCommit: '9dbba43',
+  baselineCommit: '0692fa6+',
   modules: 18,
-  loc: 7245,
-  tests: 266,
-  suites: 46,
+  loc: 7852,
+  tests: 269,
+  suites: 48,
 };
 
 const EMBEDDED_FIELD_RUNS = {

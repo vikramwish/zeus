@@ -34,7 +34,7 @@ impl std::io::Write for RequestBuffer {
     }
 }
 fn bounded_json(value: &impl serde::Serialize) -> Result<Vec<u8>, String> {
-    let mut body = RequestBuffer(Vec::new());
+    let mut body = RequestBuffer(Vec::with_capacity(4096));
     serde_json::to_writer(&mut body, value)
         .map_err(|_| "model request exceeds 4 MiB limit".to_string())?;
     Ok(body.0)
@@ -263,8 +263,22 @@ impl ChatClient {
         Ok(self)
     }
     pub fn complete(&self, messages: &[Value], tools: &[Value]) -> Result<Value, String> {
+        #[derive(serde::Serialize)]
+        struct ChatCompletionsRequest<'a> {
+            model: &'a str,
+            messages: &'a [Value],
+            stream: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            tools: Option<&'a [Value]>,
+        }
+
         // Bound the original transcript before creating provider-specific copies.
-        bounded_json(&(messages, tools))?;
+        if crate::output::json_len_within(&(messages, tools), 4 * 1024 * 1024)
+            .map_err(|_| "model request exceeds 4 MiB limit".to_string())?
+            .is_none()
+        {
+            return Err("model request exceeds 4 MiB limit".into());
+        }
         let mut request = self.agent.post(&self.endpoint);
         if let Some(key) = &self.api_key {
             request = match self.protocol {
@@ -272,25 +286,29 @@ impl ChatClient {
                 _ => request.set("Authorization", &format!("Bearer {key}")),
             };
         }
-        let mut payload = match self.protocol {
-            Protocol::ChatCompletions => {
-                json!({"model":self.model,"messages":messages,"stream":false})
-            }
-            Protocol::Responses => {
-                json!({"model":self.model,"input":responses_input(messages)?,"stream":true,"store":false})
-            }
-            Protocol::Anthropic => {
-                request = request.set("anthropic-version", "2023-06-01");
-                anthropic_input(&self.model, messages, self.max_output_tokens)?
-            }
-        };
-        if !tools.is_empty() {
-            payload["tools"] = match self.protocol {
-                Protocol::ChatCompletions => json!(tools),
-                _ => json!(translate_tools(tools, self.protocol)?),
+        let body = if self.protocol == Protocol::ChatCompletions {
+            bounded_json(&ChatCompletionsRequest {
+                model: &self.model,
+                messages,
+                stream: false,
+                tools: (!tools.is_empty()).then_some(tools),
+            })?
+        } else {
+            let mut payload = match self.protocol {
+                Protocol::ChatCompletions => unreachable!(),
+                Protocol::Responses => {
+                    json!({"model":self.model,"input":responses_input(messages)?,"stream":true,"store":false})
+                }
+                Protocol::Anthropic => {
+                    request = request.set("anthropic-version", "2023-06-01");
+                    anthropic_input(&self.model, messages, self.max_output_tokens)?
+                }
             };
-        }
-        let body = bounded_json(&payload)?;
+            if !tools.is_empty() {
+                payload["tools"] = json!(translate_tools(tools, self.protocol)?);
+            }
+            bounded_json(&payload)?
+        };
         let protocol = self.protocol;
         let budget = self.request_budget.clone();
         let (retries, timeout_seconds) = (self.retries, self.timeout_seconds);
@@ -451,7 +469,7 @@ fn exchange(
         }
         return responses_stream(response.into_reader()).map_err(Failure::from);
     }
-    let mut bytes = Vec::new();
+    let mut bytes = Vec::with_capacity(4096);
     response
         .into_reader()
         .take((RESPONSE_LIMIT + 1) as u64)
@@ -464,7 +482,7 @@ fn exchange(
         serde_json::from_slice(&bytes).map_err(|_| Failure::from("invalid model JSON"))?;
     match protocol {
         Protocol::Anthropic => anthropic_output(&body),
-        _ => chat_message(&body),
+        _ => chat_message(body),
     }
     .map_err(Failure::from)
 }
@@ -481,23 +499,24 @@ fn attach_usage(mut message: Value, usage: Option<&Value>, input: &str, output: 
     message
 }
 
-fn chat_message(body: &Value) -> Result<Value, String> {
+fn chat_message(mut body: Value) -> Result<Value, String> {
+    let usage = body.get_mut("usage").map(Value::take);
     let message = chat_message_inner(body)?;
     Ok(attach_usage(
         message,
-        body.get("usage"),
+        usage.as_ref(),
         "prompt_tokens",
         "completion_tokens",
     ))
 }
 
-fn chat_message_inner(body: &Value) -> Result<Value, String> {
+fn chat_message_inner(mut body: Value) -> Result<Value, String> {
     let choices = body
-        .get("choices")
-        .and_then(Value::as_array)
+        .get_mut("choices")
+        .and_then(Value::as_array_mut)
         .filter(|c| c.len() == 1)
         .ok_or("expected exactly one model choice")?;
-    let choice = &choices[0];
+    let choice = &mut choices[0];
     let message = choice.get("message").ok_or("missing assistant message")?;
     if message.get("role").and_then(Value::as_str) != Some("assistant") {
         return Err("expected assistant role".into());
@@ -536,7 +555,10 @@ fn chat_message_inner(body: &Value) -> Result<Value, String> {
             return Err("finish reason contradicts assistant message".into());
         }
     }
-    Ok(message.clone())
+    choice
+        .get_mut("message")
+        .map(Value::take)
+        .ok_or_else(|| "missing assistant message".into())
 }
 
 fn anthropic_input(model: &str, messages: &[Value], max_tokens: u32) -> Result<Value, String> {
@@ -662,7 +684,7 @@ fn anthropic_output(body: &Value) -> Result<Value, String> {
         return Err("incomplete or unsupported Anthropic stop reason".into());
     }
     let message = chat_message(
-        &json!({"choices":[{"message":{"role":"assistant","content":content,"tool_calls":calls,"_anthropic_content":replay}}]}),
+        json!({"choices":[{"message":{"role":"assistant","content":content,"tool_calls":calls,"_anthropic_content":replay}}]}),
     )?;
     Ok(attach_usage(
         message,
@@ -827,7 +849,7 @@ fn responses_output(output: &Value) -> Result<Value, String> {
     }
     let message =
         json!({"role":"assistant","content":content,"tool_calls":calls,"_responses_output":replay});
-    chat_message(&json!({"choices":[{"message":message}]}))
+    chat_message(json!({"choices":[{"message":message}]}))
 }
 
 // Incrementally frame SSE, but expose no text or tools until a completed response.
@@ -838,8 +860,9 @@ fn responses_stream(reader: impl std::io::Read) -> Result<Value, String> {
     let mut total = 0;
     let mut data = String::new();
     let mut event = String::new();
+    let mut line = String::new();
     loop {
-        let mut line = String::new();
+        line.clear();
         let count = reader
             .read_line(&mut line)
             .map_err(|_| "failed to read Responses stream")?;
@@ -850,8 +873,8 @@ fn responses_stream(reader: impl std::io::Read) -> Result<Value, String> {
         if count == 0 {
             return Err("Responses stream ended without response.completed".into());
         }
-        let line = line.strip_suffix('\n').unwrap_or(&line);
-        let line = line.strip_suffix('\r').unwrap_or(line);
+        let trimmed = line.strip_suffix('\n').unwrap_or(&line);
+        let line = trimmed.strip_suffix('\r').unwrap_or(trimmed);
         if line.is_empty() {
             if data.is_empty() {
                 event.clear();
