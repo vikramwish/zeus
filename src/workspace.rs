@@ -41,7 +41,14 @@ pub struct Workspace {
 }
 
 pub fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let hash = Sha256::digest(bytes);
+    let mut out = [0u8; 64];
+    for (i, &byte) in hash.iter().enumerate() {
+        out[i * 2] = HEX[(byte >> 4) as usize];
+        out[i * 2 + 1] = HEX[(byte & 0x0f) as usize];
+    }
+    std::str::from_utf8(&out).unwrap_or_default().to_owned()
 }
 fn excluded(name: &str) -> bool {
     matches!(
@@ -86,39 +93,164 @@ fn excluded(name: &str) -> bool {
 /// Conservative content check for credentials in ordinary text files. Matches
 /// well-known key shapes only; it is a guard against the common leak, not a
 /// secret scanner. Returns the matched kind, never the matched value.
-pub fn secret_like(text: &str) -> Option<&'static str> {
+const fn secret_luts() -> ([u8; 256], [u8; 256], [u8; 256], [u8; 256]) {
+    let mut b0 = [0u8; 256];
+    let mut b1 = [0u8; 256];
+    let mut b2 = [0u8; 256];
+    let mut b3 = [0u8; 256];
+
+    b0[b's' as usize] |= 1;
+    b1[b'k' as usize] |= 1;
+    b2[b'-' as usize] |= 1;
+    b3[b'a' as usize] |= 1;
+    b3[b'p' as usize] |= 1;
+    b3[b'o' as usize] |= 1;
+    b3[b'l' as usize] |= 1;
+
+    b0[b'A' as usize] |= 2;
+    b1[b'K' as usize] |= 2;
+    b1[b'S' as usize] |= 2;
+    b2[b'I' as usize] |= 2;
+    b3[b'A' as usize] |= 2;
+
+    b0[b'g' as usize] |= 4;
+    b1[b'h' as usize] |= 4;
+    b2[b'p' as usize] |= 4;
+    b2[b'o' as usize] |= 4;
+    b2[b'u' as usize] |= 4;
+    b2[b's' as usize] |= 4;
+    b2[b'r' as usize] |= 4;
+    b3[b'_' as usize] |= 4;
+
+    b0[b'x' as usize] |= 8;
+    b1[b'o' as usize] |= 8;
+    b2[b'x' as usize] |= 8;
+    b3[b'b' as usize] |= 8;
+    b3[b'p' as usize] |= 8;
+    b3[b'a' as usize] |= 8;
+    b3[b'r' as usize] |= 8;
+    b3[b's' as usize] |= 8;
+
+    b0[b'A' as usize] |= 16;
+    b1[b'I' as usize] |= 16;
+    b2[b'z' as usize] |= 16;
+    b3[b'a' as usize] |= 16;
+
+    b0[b'P' as usize] |= 32;
+    b1[b'R' as usize] |= 32;
+    b2[b'I' as usize] |= 32;
+    b3[b'V' as usize] |= 32;
+
+    (b0, b1, b2, b3)
+}
+
+const SECRET_LUTS: ([u8; 256], [u8; 256], [u8; 256], [u8; 256]) = secret_luts();
+
+fn secret_at(text: &str, bytes: &[u8], index: usize) -> Option<&'static str> {
+    #[inline]
     fn run_len(bytes: &[u8], allowed: fn(u8) -> bool) -> usize {
         bytes.iter().take_while(|b| allowed(**b)).count()
     }
+    #[inline]
     fn token(b: u8) -> bool {
         b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
     }
-    if text.contains("PRIVATE KEY-----") {
+
+    let window = &bytes[index..index + 4];
+    let rest = &bytes[index + 4..];
+    if window == b"PRIV" && rest.starts_with(b"ATE KEY-----") {
         return Some("private key block");
     }
-    let bytes = text.as_bytes();
-    for (index, window) in bytes.windows(4).enumerate() {
-        let rest = &bytes[index + 4..];
-        let kind = match window {
-            b"sk-a" | b"sk-p" | b"sk-o" | b"sk-l" => {
-                (run_len(rest, token) >= 20).then_some("sk- API key")
-            }
-            b"AKIA" | b"ASIA" => (run_len(rest, |b| b.is_ascii_uppercase() || b.is_ascii_digit())
-                == 16
-                && rest.get(16).is_none_or(|b| !token(*b)))
-            .then_some("AWS access key id"),
-            b"ghp_" | b"gho_" | b"ghu_" | b"ghs_" | b"ghr_" => {
-                (run_len(rest, |b| b.is_ascii_alphanumeric()) >= 36).then_some("GitHub token")
-            }
-            b"xoxb" | b"xoxp" | b"xoxa" | b"xoxr" | b"xoxs" => (rest.first() == Some(&b'-')
-                && run_len(&rest[1..], token) >= 20)
-                .then_some("Slack token"),
-            b"AIza" => (run_len(rest, token) >= 35).then_some("Google API key"),
-            _ => None,
-        };
-        if let Some(kind) = kind {
-            return Some(kind);
+    let kind = match window {
+        b"sk-a" | b"sk-p" | b"sk-o" | b"sk-l" => {
+            (run_len(rest, token) >= 20).then_some("sk- API key")
         }
+        b"AKIA" | b"ASIA" => (run_len(rest, |b| b.is_ascii_uppercase() || b.is_ascii_digit())
+            == 16
+            && rest.get(16).is_none_or(|b| !token(*b)))
+        .then_some("AWS access key id"),
+        b"ghp_" | b"gho_" | b"ghu_" | b"ghs_" | b"ghr_" => {
+            (run_len(rest, |b| b.is_ascii_alphanumeric()) >= 36).then_some("GitHub token")
+        }
+        b"xoxb" | b"xoxp" | b"xoxa" | b"xoxr" | b"xoxs" => (rest.first() == Some(&b'-')
+            && run_len(&rest[1..], token) >= 20)
+            .then_some("Slack token"),
+        b"AIza" => (run_len(rest, token) >= 35).then_some("Google API key"),
+        _ => None,
+    }?;
+    // Preserve precedence of private key blocks when both appear in one file.
+    if text[index + 4..].contains("PRIVATE KEY-----") {
+        return Some("private key block");
+    }
+    Some(kind)
+}
+
+pub fn secret_like(text: &str) -> Option<&'static str> {
+    let bytes = text.as_bytes();
+    // Shortest pattern ("PRIVATE KEY-----") is 16 bytes.
+    if bytes.len() < 16 {
+        return None;
+    }
+    let (b0, b1, b2, b3) = &SECRET_LUTS;
+    let limit = bytes.len() - 15;
+    let mut i = 0;
+    while i + 8 <= limit {
+        let c0 = b0[bytes[i] as usize]
+            & b1[bytes[i + 1] as usize]
+            & b2[bytes[i + 2] as usize]
+            & b3[bytes[i + 3] as usize];
+        let c1 = b0[bytes[i + 1] as usize]
+            & b1[bytes[i + 2] as usize]
+            & b2[bytes[i + 3] as usize]
+            & b3[bytes[i + 4] as usize];
+        let c2 = b0[bytes[i + 2] as usize]
+            & b1[bytes[i + 3] as usize]
+            & b2[bytes[i + 4] as usize]
+            & b3[bytes[i + 5] as usize];
+        let c3 = b0[bytes[i + 3] as usize]
+            & b1[bytes[i + 4] as usize]
+            & b2[bytes[i + 5] as usize]
+            & b3[bytes[i + 6] as usize];
+        let c4 = b0[bytes[i + 4] as usize]
+            & b1[bytes[i + 5] as usize]
+            & b2[bytes[i + 6] as usize]
+            & b3[bytes[i + 7] as usize];
+        let c5 = b0[bytes[i + 5] as usize]
+            & b1[bytes[i + 6] as usize]
+            & b2[bytes[i + 7] as usize]
+            & b3[bytes[i + 8] as usize];
+        let c6 = b0[bytes[i + 6] as usize]
+            & b1[bytes[i + 7] as usize]
+            & b2[bytes[i + 8] as usize]
+            & b3[bytes[i + 9] as usize];
+        let c7 = b0[bytes[i + 7] as usize]
+            & b1[bytes[i + 8] as usize]
+            & b2[bytes[i + 9] as usize]
+            & b3[bytes[i + 10] as usize];
+        let mask = c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7;
+        if mask != 0 {
+            for (k, c) in [c0, c1, c2, c3, c4, c5, c6, c7].into_iter().enumerate() {
+                if c != 0 {
+                    if let Some(kind) = secret_at(text, bytes, i + k) {
+                        return Some(kind);
+                    }
+                }
+            }
+        }
+        i += 8;
+    }
+    while i < limit {
+        if (b0[bytes[i] as usize]
+            & b1[bytes[i + 1] as usize]
+            & b2[bytes[i + 2] as usize]
+            & b3[bytes[i + 3] as usize])
+            != 0
+        {
+            if let Some(kind) = secret_at(text, bytes, i) {
+                return Some(kind);
+            }
+        }
+        i += 1;
     }
     None
 }
@@ -164,126 +296,213 @@ fn kind(bytes: &[u8], path: &Path) -> String {
     }
     .into()
 }
-fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
-    let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+fn open_regular_nofollow(path: &Path) -> std::io::Result<fs::File> {
+    let mut opts = OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(libc::O_NOFOLLOW);
+    }
+    opts.open(path)
+}
+
+fn read_bounded_into(
+    path: &Path,
+    limit: u64,
+    meta: &fs::Metadata,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
     if !meta.is_file() || meta.file_type().is_symlink() {
         return Err("regular files only".into());
     }
     if meta.len() > limit {
         return Err(format!("file exceeds {limit} byte limit"));
     }
-    let mut data = Vec::new();
-    fs::File::open(path)
+    out.clear();
+    let needed = (meta.len() as usize).saturating_add(1);
+    if out.capacity() < needed {
+        out.reserve(needed - out.capacity());
+    }
+    open_regular_nofollow(path)
         .map_err(|e| e.to_string())?
         .take(limit + 1)
-        .read_to_end(&mut data)
+        .read_to_end(out)
         .map_err(|e| e.to_string())?;
-    if data.len() as u64 > limit {
+    if out.len() as u64 > limit {
         return Err("file grew beyond limit".into());
     }
+    Ok(())
+}
+
+fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+    let mut data = Vec::new();
+    read_bounded_into(path, limit, &meta, &mut data)?;
     Ok(data)
 }
 
 #[cfg(unix)]
-fn normal_permissions(path: &Path) -> std::io::Result<fs::Permissions> {
+fn sanitize_permissions(meta: &fs::Metadata) -> fs::Permissions {
     use std::os::unix::fs::PermissionsExt;
     // Preserve rwx, never copy setuid, setgid, or sticky bits into the candidate.
-    let mode = fs::symlink_metadata(path)?.permissions().mode() & 0o777;
-    Ok(fs::Permissions::from_mode(mode))
+    fs::Permissions::from_mode(meta.permissions().mode() & 0o777)
+}
+
+struct WalkCtx<'a> {
+    inv: Inventory,
+    total: u64,
+    scratch: Vec<u8>,
+    copy_root: Option<&'a Path>,
 }
 
 pub fn inspect(source: &Path) -> Result<Inventory, String> {
+    walk_root(source, None)
+}
+
+fn walk_root(source: &Path, copy_root: Option<&Path>) -> Result<Inventory, String> {
     let meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
     if meta.file_type().is_symlink() {
         return Err("target cannot be a symlink".into());
     }
-    let mut inventory = Inventory {
-        entries: vec![],
-        skipped: vec![],
+    let mut ctx = WalkCtx {
+        inv: Inventory {
+            entries: vec![],
+            skipped: vec![],
+        },
+        total: 0,
+        scratch: Vec::with_capacity(64 * 1024),
+        copy_root,
     };
-    let mut total = 0;
-    let base = if meta.is_file() {
-        source.parent().ok_or("target has no parent")?
+    if meta.is_dir() {
+        walk_dir(source, "", 0, &mut ctx)?;
+    } else if meta.is_file() {
+        let name = source
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or("non-UTF8 filename")?;
+        if excluded(name) {
+            ctx.inv.skipped.push(name.to_owned());
+        } else {
+            let mut root_created = true;
+            visit_regular_file(source, name, &meta, &mut root_created, &mut ctx)?;
+        }
     } else {
-        source
-    };
-    walk(source, base, &mut inventory, &mut total, 0)?;
-    Ok(inventory)
+        let name = source
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or("non-UTF8 filename")?;
+        ctx.inv.skipped.push(format!("{name} (not regular)"));
+    }
+    Ok(ctx.inv)
 }
-fn walk(
+
+fn visit_regular_file(
     path: &Path,
-    base: &Path,
-    inv: &mut Inventory,
-    total: &mut u64,
+    relative: &str,
+    meta: &fs::Metadata,
+    dir_created: &mut bool,
+    ctx: &mut WalkCtx<'_>,
+) -> Result<(), String> {
+    if ctx.inv.entries.len() >= MAX_FILES {
+        return Err("file-count limit exceeded".into());
+    }
+    if meta.len() > MAX_FILE || ctx.total + meta.len() > MAX_TOTAL {
+        return Err("snapshot byte limit exceeded; select a smaller target".into());
+    }
+    read_bounded_into(path, MAX_FILE, meta, &mut ctx.scratch)?;
+    if ctx.copy_root.is_some() && ctx.scratch.len() as u64 != meta.len() {
+        return Err("source changed during snapshot".into());
+    }
+    ctx.total += ctx.scratch.len() as u64;
+    if ctx.total > MAX_TOTAL {
+        return Err("snapshot byte limit exceeded".into());
+    }
+    let sha256 = digest(&ctx.scratch);
+    let file_kind = kind(&ctx.scratch, path);
+    if let Some(copy_root) = ctx.copy_root {
+        let target = copy_root.join(relative);
+        if !*dir_created {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            *dir_created = true;
+        }
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+            .map_err(|e| e.to_string())?;
+        file.write_all(&ctx.scratch).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        file.set_permissions(sanitize_permissions(meta))
+            .map_err(|e| e.to_string())?;
+    }
+    ctx.inv.entries.push(Entry {
+        path: relative.to_owned(),
+        bytes: ctx.scratch.len() as u64,
+        sha256,
+        kind: file_kind,
+    });
+    Ok(())
+}
+
+fn walk_dir(
+    dir: &Path,
+    rel_prefix: &str,
     depth: usize,
+    ctx: &mut WalkCtx<'_>,
 ) -> Result<(), String> {
     if depth > MAX_DEPTH {
         return Err(format!(
             "directory depth limit exceeded ({MAX_DEPTH}); select a smaller target"
         ));
     }
-    let name = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or("non-UTF8 filename")?;
-    let relative = path
-        .strip_prefix(base)
-        .map_err(|e| e.to_string())?
-        .to_str()
-        .ok_or("non-UTF8 path")?
-        .to_owned();
-    if path != base && excluded(name) {
-        inv.skipped.push(relative);
-        return Ok(());
-    }
-    let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
-    if meta.file_type().is_symlink() {
-        inv.skipped.push(format!("{relative} (symlink)"));
-        return Ok(());
-    }
-    if meta.is_dir() {
-        let mut children = fs::read_dir(path)
-            .map_err(|e| e.to_string())?
-            .map(|e| e.map(|x| x.path()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        if children.len() > 10000 {
+    let mut names = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        names.push(entry.file_name());
+        if names.len() > 10_000 {
             return Err("directory entry limit exceeded".into());
         }
-        children.sort();
-        for child in children {
-            walk(&child, base, inv, total, depth + 1)?;
-        }
-    } else if meta.is_file() {
-        if inv.entries.len() >= MAX_FILES {
-            return Err("file-count limit exceeded".into());
-        }
-        if meta.len() > MAX_FILE || *total + meta.len() > MAX_TOTAL {
-            return Err("snapshot byte limit exceeded; select a smaller target".into());
-        }
-        let data = bounded_read(path, MAX_FILE)?;
-        *total += data.len() as u64;
-        if *total > MAX_TOTAL {
-            return Err("snapshot byte limit exceeded".into());
-        }
-        inv.entries.push(Entry {
-            path: relative,
-            bytes: data.len() as u64,
-            sha256: digest(&data),
-            kind: kind(&data, path),
-        });
-    } else {
-        inv.skipped.push(format!("{relative} (not regular)"));
     }
-    if inv.skipped.len() > MAX_FILES {
-        return Err("too many skipped entries".into());
+    names.sort();
+    let mut dir_created = rel_prefix.is_empty();
+    for os_name in names {
+        let name = os_name.to_str().ok_or("non-UTF8 filename")?;
+        let relative = if rel_prefix.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{rel_prefix}/{name}")
+        };
+        if excluded(name) {
+            ctx.inv.skipped.push(relative);
+        } else {
+            let child = dir.join(name);
+            let meta = fs::symlink_metadata(&child).map_err(|e| e.to_string())?;
+            if meta.file_type().is_symlink() {
+                ctx.inv.skipped.push(format!("{relative} (symlink)"));
+            } else if meta.is_dir() {
+                walk_dir(&child, &relative, depth + 1, ctx)?;
+            } else if meta.is_file() {
+                visit_regular_file(&child, &relative, &meta, &mut dir_created, ctx)?;
+            } else {
+                ctx.inv.skipped.push(format!("{relative} (not regular)"));
+            }
+        }
+        if ctx.inv.skipped.len() > MAX_FILES {
+            return Err("too many skipped entries".into());
+        }
     }
     Ok(())
 }
 
 impl Workspace {
     pub fn snapshot(source: &Path, destination: &Path) -> Result<Self, String> {
-        let inventory = inspect(source)?;
+        let src_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+        if src_meta.file_type().is_symlink() {
+            return Err("target cannot be a symlink".into());
+        }
         let canonical_source = fs::canonicalize(source).map_err(|e| e.to_string())?;
         let parent = fs::canonicalize(destination.parent().ok_or("destination has no parent")?)
             .map_err(|e| e.to_string())?;
@@ -300,32 +519,20 @@ impl Workspace {
         }
         #[cfg(not(unix))]
         fs::create_dir(destination).map_err(|e| e.to_string())?;
-        let root = fs::canonicalize(destination).map_err(|e| e.to_string())?;
-        let base = if canonical_source.is_file() {
-            canonical_source.parent().ok_or("source parent missing")?
-        } else {
-            &canonical_source
-        };
-        for entry in &inventory.entries {
-            let bytes = bounded_read(&base.join(&entry.path), MAX_FILE)?;
-            if digest(&bytes) != entry.sha256 {
-                return Err("source changed during snapshot".into());
+        let root = match fs::canonicalize(destination) {
+            Ok(root) => root,
+            Err(e) => {
+                let _ = fs::remove_dir_all(destination);
+                return Err(e.to_string());
             }
-            let target = root.join(&entry.path);
-            fs::create_dir_all(target.parent().ok_or("target parent missing")?)
-                .map_err(|e| e.to_string())?;
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&target)
-                .map_err(|e| e.to_string())?;
-            file.write_all(&bytes).map_err(|e| e.to_string())?;
-            #[cfg(unix)]
-            file.set_permissions(
-                normal_permissions(&base.join(&entry.path)).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
-        }
+        };
+        let inventory = match walk_root(&canonical_source, Some(&root)) {
+            Ok(inv) => inv,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&root);
+                return Err(e);
+            }
+        };
         Ok(Self {
             root,
             inventory,
@@ -358,17 +565,17 @@ impl Workspace {
     }
     pub fn read(&self, path: &str) -> Result<ReadResult, String> {
         let bytes = bounded_read(&self.resolve(path)?, MAX_TEXT as u64)?;
-        let sha256 = digest(&bytes);
-        let content = String::from_utf8(bytes)
-            .map_err(|_| "binary file: use artifact analysis tools".to_string())?;
-        if content.contains('\0') {
+        if bytes.contains(&0) {
             return Err("binary file: use artifact analysis tools".into());
         }
+        let content = String::from_utf8(bytes)
+            .map_err(|_| "binary file: use artifact analysis tools".to_string())?;
         if let Some(kind) = secret_like(&content) {
             return Err(format!(
                 "file contains secret-like content ({kind}); it stays in the candidate but is not shown to the model"
             ));
         }
+        let sha256 = digest(content.as_bytes());
         Ok(ReadResult { content, sha256 })
     }
     pub fn write(&self, path: &str, content: &str, expected: Option<&str>) -> Result<(), String> {
@@ -380,24 +587,35 @@ impl Workspace {
             .lock()
             .map_err(|_| "workspace mutation lock poisoned")?;
         let target = self.resolve(path)?;
-        if target.exists() {
-            let current = bounded_read(&target, MAX_TEXT as u64)?;
-            if Some(digest(&current).as_str()) != expected {
-                return Err("stale or missing expected_sha256".into());
-            }
-        } else if expected.is_some() {
-            return Err("expected existing file is missing".into());
-        }
         #[cfg(unix)]
-        let permissions = if target.exists() {
-            Some(normal_permissions(&target).map_err(|e| e.to_string())?)
-        } else {
-            None
+        let mut permissions = None;
+        let existed = match fs::symlink_metadata(&target) {
+            Ok(meta) => {
+                #[cfg(unix)]
+                {
+                    permissions = Some(sanitize_permissions(&meta));
+                }
+                let mut current = Vec::new();
+                read_bounded_into(&target, MAX_TEXT as u64, &meta, &mut current)?;
+                if Some(digest(&current).as_str()) != expected {
+                    return Err("stale or missing expected_sha256".into());
+                }
+                true
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if expected.is_some() {
+                    return Err("expected existing file is missing".into());
+                }
+                false
+            }
+            Err(e) => return Err(e.to_string()),
         };
         let parent = target.parent().ok_or("missing parent")?;
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        // Recheck after directory creation; all agent writes share the mutation lock.
-        self.resolve(path)?;
+        if !existed {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            // Recheck after directory creation; all agent writes share the mutation lock.
+            self.resolve(path)?;
+        }
         let temp = parent.join(format!(
             ".native-write-{}-{}",
             std::process::id(),
@@ -445,6 +663,7 @@ impl Workspace {
         let mut entries = 0;
         let mut files = 0;
         let mut bytes = 0u64;
+        let mut scratch = Vec::with_capacity(64 * 1024);
         'paths: while let Some(path) = pending.pop_first() {
             if skipped.len() == MAX_RESULTS {
                 truncation_reason = Some("diagnostic limit");
@@ -453,15 +672,21 @@ impl Workspace {
             let target = if path.is_empty() {
                 self.root.clone()
             } else {
-                match self.resolve(&path) {
-                    Ok(target) => target,
-                    Err(reason) => {
-                        skipped.push(serde_json::json!({"path": path, "reason": reason}));
-                        continue;
-                    }
+                let leaf = path.rsplit('/').next().unwrap_or(&path);
+                if excluded(leaf) {
+                    skipped.push(serde_json::json!({
+                        "path": path,
+                        "reason": "excluded or sensitive path"
+                    }));
+                    continue;
                 }
+                self.root.join(&path)
             };
             let meta = fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
+            if meta.file_type().is_symlink() {
+                skipped.push(serde_json::json!({"path": path, "reason": "symlinks forbidden"}));
+                continue;
+            }
             if meta.is_dir() {
                 // Bound enumeration before collecting/sorting; empty directories also
                 // consume budget. An oversized directory is not partially searched.
@@ -488,7 +713,7 @@ impl Workspace {
                 }
                 continue;
             }
-            if !meta.is_file() || meta.file_type().is_symlink() {
+            if !meta.is_file() {
                 skipped.push(serde_json::json!({"path": path, "reason": "regular files only"}));
                 continue;
             }
@@ -501,45 +726,74 @@ impl Workspace {
                 skipped.push(serde_json::json!({"path": path, "reason": "file exceeds 131072 byte text limit"}));
                 continue;
             }
-            let text = match self.read(&path) {
-                Ok(text) => text,
-                Err(reason) => {
-                    // A failed bounded read may still have consumed its full allowance.
-                    bytes += MAX_TEXT as u64;
-                    skipped.push(serde_json::json!({"path": path, "reason": reason}));
-                    continue;
-                }
+            if let Err(reason) = read_bounded_into(&target, MAX_TEXT as u64, &meta, &mut scratch) {
+                bytes += MAX_TEXT as u64;
+                skipped.push(serde_json::json!({"path": path, "reason": reason}));
+                continue;
+            }
+            if scratch.contains(&0) {
+                bytes += MAX_TEXT as u64;
+                skipped.push(serde_json::json!({
+                    "path": path,
+                    "reason": "binary file: use artifact analysis tools"
+                }));
+                continue;
+            }
+            let Ok(text) = std::str::from_utf8(&scratch) else {
+                bytes += MAX_TEXT as u64;
+                skipped.push(serde_json::json!({
+                    "path": path,
+                    "reason": "binary file: use artifact analysis tools"
+                }));
+                continue;
             };
-            bytes += text.content.len() as u64;
-            for (offset, _) in text.content.match_indices(query) {
+            if let Some(kind) = secret_like(text) {
+                bytes += MAX_TEXT as u64;
+                skipped.push(serde_json::json!({
+                    "path": path,
+                    "reason": format!(
+                        "file contains secret-like content ({kind}); it stays in the candidate but is not shown to the model"
+                    )
+                }));
+                continue;
+            }
+            bytes += text.len() as u64;
+            let mut iter = text.match_indices(query).peekable();
+            if iter.peek().is_none() {
+                continue;
+            }
+            let sha256 = digest(text.as_bytes());
+            let source_id = format!("{path}#{sha256}");
+            let text_bytes = text.as_bytes();
+            let mut line = 1usize;
+            let mut scanned = 0usize;
+            for (offset, _) in iter {
                 if matches.len() == max_results {
                     truncation_reason = Some("result limit");
                     break 'paths;
                 }
-                let line = text.content[..offset]
-                    .bytes()
-                    .filter(|b| *b == b'\n')
-                    .count()
-                    + 1;
-                let line_start = text.content[..offset].rfind('\n').map_or(0, |i| i + 1);
-                let line_end = text.content[offset..]
-                    .find('\n')
-                    .map_or(text.content.len(), |i| offset + i);
+                line += text_bytes[scanned..offset]
+                    .iter()
+                    .filter(|&&b| b == b'\n')
+                    .count();
+                scanned = offset;
+                let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
+                let line_end = text[offset..].find('\n').map_or(text.len(), |i| offset + i);
                 // Center long-line excerpts near the match rather than silently hiding it.
                 let mut start = line_start.max(offset.saturating_sub(MAX_EXCERPT / 4));
-                while !text.content.is_char_boundary(start) {
+                while !text.is_char_boundary(start) {
                     start += 1;
                 }
                 let mut end = line_end.min(start + MAX_EXCERPT);
-                while !text.content.is_char_boundary(end) {
+                while !text.is_char_boundary(end) {
                     end -= 1;
                 }
                 matches.push(serde_json::json!({
                     "path": path, "line": line, "byte_offset": offset,
-                    "content": &text.content[start..end],
+                    "content": &text[start..end],
                     "content_truncated": start != line_start || end != line_end || offset + query.len() > end,
-                    "sha256": text.sha256,
-                    "source_id": format!("{}#{}", path, text.sha256),
+                    "sha256": &sha256,
+                    "source_id": &source_id,
                 }));
             }
         }
@@ -549,12 +803,15 @@ impl Workspace {
         for items in [&mut matches, &mut skipped] {
             let mut keep = 0;
             for item in items.iter() {
-                let size = item.to_string().len() + 1;
-                if output_bytes + size > MAX_TEXT {
+                let Some(budget) = MAX_TEXT.checked_sub(output_bytes + 1) else {
                     truncation_reason = Some("output byte limit");
                     break;
-                }
-                output_bytes += size;
+                };
+                let Some(size) = crate::output::json_len_within(item, budget)? else {
+                    truncation_reason = Some("output byte limit");
+                    break;
+                };
+                output_bytes += size + 1;
                 keep += 1;
             }
             items.truncate(keep);
@@ -608,5 +865,40 @@ impl Workspace {
 
     pub fn list(&self) -> Result<Inventory, String> {
         inspect(&self.root)
+    }
+    pub(crate) fn inspect_subdir(&self, subdir: &str) -> Result<Inventory, String> {
+        let sub = self.root.join(subdir);
+        let meta = match std::fs::symlink_metadata(&sub) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Inventory {
+                    entries: vec![],
+                    skipped: vec![],
+                });
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        let mut ctx = WalkCtx {
+            inv: Inventory {
+                entries: vec![],
+                skipped: vec![],
+            },
+            total: 0,
+            scratch: Vec::with_capacity(64 * 1024),
+            copy_root: None,
+        };
+        if meta.file_type().is_symlink() {
+            ctx.inv.skipped.push(format!("{subdir} (symlink)"));
+        } else if excluded(subdir) {
+            ctx.inv.skipped.push(subdir.to_owned());
+        } else if meta.is_dir() {
+            walk_dir(&sub, subdir, 1, &mut ctx)?;
+        } else if meta.is_file() {
+            let mut created = true;
+            visit_regular_file(&sub, subdir, &meta, &mut created, &mut ctx)?;
+        } else {
+            ctx.inv.skipped.push(format!("{subdir} (not regular)"));
+        }
+        Ok(ctx.inv)
     }
 }
